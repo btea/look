@@ -29,12 +29,19 @@ function randomString() {
 function add(a, b) {
     return Promise.resolve(a + b);
 }
-function sum(arr) {
+async function sum(arr) {
     // 思路可以二分，切成两部分beforeSum，afterSum
+    let _sum = 0;
+    for(let v of arr) {
+        _sum = await add(_sum, v);
+    }
+    console.log(_sum)
+    return _sum;
 }
 /**
  * 变种：如果后端设置了并发限制，一次不能请求超过三个，怎么办？
  */
+ 
 ```
 
 ---
