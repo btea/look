@@ -32,16 +32,15 @@ function add(a, b) {
 async function sum(arr) {
     // 思路可以二分，切成两部分beforeSum，afterSum
     let _sum = 0;
-    for(let v of arr) {
+    for (let v of arr) {
         _sum = await add(_sum, v);
     }
-    console.log(_sum)
+    console.log(_sum);
     return _sum;
 }
 /**
  * 变种：如果后端设置了并发限制，一次不能请求超过三个，怎么办？
  */
- 
 ```
 
 ---
@@ -53,9 +52,9 @@ async function sum(arr) {
  * 随机返回一个中奖人名，中奖概率和w成正比
  */
 let peoples = [
-    { n: 'p1', w: 100 },
-    { n: 'p2', w: 200 },
-    { n: 'p3', w: 1 }
+    { n: '张一', w: 100 },
+    { n: '王二', w: 200 },
+    { n: '李三', w: 1 }
 ];
 let rand = function (p) {
     let sum = 0;
@@ -75,16 +74,23 @@ function getRand(max, min) {
     return Math.floor(Math.random() * (max - min) + min);
 }
 
-function test(i = 1000) {
+function test(peoples, i = 1000) {
     let obj = {};
+    let total = i;
     while (i--) {
         let v = rand(peoples);
         if (obj[v.n]) {
-            obj[v.n]++;
+            obj[v.n].value++;
         } else {
-            obj[v.n] = 1;
+            obj[v.n] = {
+                value: 1
+            };
         }
     }
+    Object.keys(obj).forEach(key => {
+        obj[key]['百分比'] = (obj[key].value / total).toFixed(5) * 100 + '%';
+    });
+    console.table(obj);
     return obj;
 }
 ```
