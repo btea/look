@@ -35,12 +35,21 @@ _tagName_
 document.createElement('div'); // 创建一个div标签
 ```
 
-对于上面的用法，大家应该都司空见惯了。不过，这个方法还有第二个参数，对于它表示的意义以及使用方法，想必不少人都比较陌生。接下来，让我们一起看看...
+对于上面的用法，大家应该都司空见惯了。不过，这个方法还有第二个参数，对于它表示的意义以及使用方法，想必不少人都比较陌生。接下来，让我们一起来看看第二个参数的用法...
+
+根据 MDN 文档我们可以知道，第二个可选的参数 `options` 是一个包含 `is` 属性的对象，该属性的值，则是 `customElements.define()` 方法定义过的一个自定义元素的标签名。
+
+此处，牵扯到另外一个方法 `customElements.define`，那么，这个方法又是用来做什么的呢？
+
+**_customElements.define_**  
+一句话概括，`这个方法用来实现一个自定义元素`。  
+关于这个方法的详细用途以及使用方式，请参照[customeElement.define](https://developer.mozilla.org/zh-CN/docs/Web/API/CustomElementRegistry/define)
 
 <!-- 打开仓库[源码](https://github.com/aFarkas/html5shiv/blob/master/src/html5shiv.js)，我们能看到，代码并不多，加上注释也不过三百来行。 -->
 
 ### 参考资料：
 
+-   [CustomElementRegistry.define()](https://developer.mozilla.org/zh-CN/docs/Web/API/CustomElementRegistry/define)
 -   [createElement 方法标准](https://dom.spec.whatwg.org/#dom-document-createelement)
 -   [createElement MDN 文档](https://developer.mozilla.org/zh-CN/docs/Web/API/Document/createElement)
 -   [html5shiv 仓库](https://github.com/aFarkas/html5shiv)
