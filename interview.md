@@ -20,4 +20,5 @@
 ## 来源：  
 
 * [读者六轮面试，终与字节无缘](https://mp.weixin.qq.com/s/zTEq5bD5UgVxVE-WMibjQg)  
-> 备注：当前版本1.59.2(user setup) markdown预览checkbox格式没有渲染出来。。。
+> 备注：当前版本1.59.2(user setup) markdown预览checkbox格式没有渲染出来。。。  
+> [vscode pull 131452](https://github.com/microsoft/vscode/pull/131452)  
