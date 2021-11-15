@@ -103,3 +103,9 @@ function test(peoples, i = 1000) {
  */
 // 将数组分割成若干份，求出每一份的最大值，然后进一步求这些最大值里的最大值。。。
 ```
+
+---
+
+### 编程面试题
+
+[https://github.com/KieSun/interview](https://github.com/KieSun/interview)
