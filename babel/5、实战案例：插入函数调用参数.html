@@ -1,0 +1,219 @@
+<style>.markdown-body{word-break:break-word;line-height:1.75;font-weight:400;font-size:15px;overflow-x:hidden;color:#333}.markdown-body h1,.markdown-body h2,.markdown-body h3,.markdown-body h4,.markdown-body h5,.markdown-body h6{line-height:1.5;margin-top:35px;margin-bottom:10px;padding-bottom:5px}.markdown-body h1{font-size:30px;margin-bottom:5px}.markdown-body h2{padding-bottom:12px;font-size:24px;border-bottom:1px solid #ececec}.markdown-body h3{font-size:18px;padding-bottom:0}.markdown-body h4{font-size:16px}.markdown-body h5{font-size:15px}.markdown-body h6{margin-top:5px}.markdown-body p{line-height:inherit;margin-top:22px;margin-bottom:22px}.markdown-body img{max-width:100%}.markdown-body hr{border:none;border-top:1px solid #ddd;margin-top:32px;margin-bottom:32px}.markdown-body code{word-break:break-word;border-radius:2px;overflow-x:auto;background-color:#fff5f5;color:#ff502c;font-size:.87em;padding:.065em .4em}.markdown-body code,.markdown-body pre{font-family:Menlo,Monaco,Consolas,Courier New,monospace}.markdown-body pre{overflow:auto;position:relative;line-height:1.75}.markdown-body pre>code{font-size:12px;padding:15px 12px;margin:0;word-break:normal;display:block;overflow-x:auto;color:#333;background:#f8f8f8}.markdown-body a{text-decoration:none;color:#0269c8;border-bottom:1px solid #d1e9ff}.markdown-body a:active,.markdown-body a:hover{color:#275b8c}.markdown-body table{display:inline-block!important;font-size:12px;width:auto;max-width:100%;overflow:auto;border:1px solid #f6f6f6}.markdown-body thead{background:#f6f6f6;color:#000;text-align:left}.markdown-body tr:nth-child(2n){background-color:#fcfcfc}.markdown-body td,.markdown-body th{padding:12px 7px;line-height:24px}.markdown-body td{min-width:120px}.markdown-body blockquote{color:#666;padding:1px 23px;margin:22px 0;border-left:4px solid #cbcbcb;background-color:#f8f8f8}.markdown-body blockquote:after{display:block;content:""}.markdown-body blockquote>p{margin:10px 0}.markdown-body ol,.markdown-body ul{padding-left:28px}.markdown-body ol li,.markdown-body ul li{margin-bottom:0;list-style:inherit}.markdown-body ol li .task-list-item,.markdown-body ul li .task-list-item{list-style:none}.markdown-body ol li .task-list-item ol,.markdown-body ol li .task-list-item ul,.markdown-body ul li .task-list-item ol,.markdown-body ul li .task-list-item ul{margin-top:0}.markdown-body ol ol,.markdown-body ol ul,.markdown-body ul ol,.markdown-body ul ul{margin-top:3px}.markdown-body ol li{padding-left:6px}.markdown-body .contains-task-list{padding-left:0}.markdown-body .task-list-item{list-style:none}@media (max-width:720px){.markdown-body h1{font-size:24px}.markdown-body h2{font-size:20px}.markdown-body h3{font-size:18px}}</style><p>学习完了 babel 的编译流程、AST、api 之后，我们已经可以做一些有趣的事情了。</p>
+<h2 data-id="heading-0">需求描述</h2>
+<p>我们先做一个简单的功能练练手：</p>
+<blockquote>
+<p>我们经常会打印一些日志来辅助调试，但是有的时候会不知道日志是在哪个地方打印的。希望通过 babel 能够自动在 console.log 等 api 中插入文件名和行列号的参数，方便定位到代码。</p>
+</blockquote>
+<h2 data-id="heading-1">实现思路分析</h2>
+<p>需要做的是在遍历 AST 的时候对 console.log、console.info 等 api 自动插入一些参数，也就是要通过 visitor 指定对函数调用表达式 CallExpression（这个可以通过 <a href="https://link.juejin.cn?target=https%3A%2F%2Fastexplorer.net%2F" target="_blank" rel="nofollow noopener noreferrer" title="https://astexplorer.net/" ref="nofollow noopener noreferrer">astexplorer.net</a> 来查看） 做一些处理。CallExrpession 节点有两个属性，callee 和 arguments，分别对应调用的函数名和参数， 所以我们要判断当 callee 是 console.xx 时，在 arguments 的数组中中插入一个 AST 节点。</p>
+<p><img src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/68a822a904b644e0903ab4e77bdc101d~tplv-k3u1fbpfcp-watermark.awebp" alt="" loading="lazy" class="medium-zoom-image"></p>
+<h2 data-id="heading-2">代码实现</h2>
+<p>首先把 parse、transform、generate 的框架搭好：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">const</span> parser = <span class="hljs-built_in">require</span>(<span class="hljs-string">'@babel/parser'</span>);
+<span class="hljs-keyword">const</span> traverse = <span class="hljs-built_in">require</span>(<span class="hljs-string">'@babel/traverse'</span>).default;
+<span class="hljs-keyword">const</span> generate = <span class="hljs-built_in">require</span>(<span class="hljs-string">'@babel/generator'</span>).default;
+
+<span class="hljs-keyword">const</span> sourceCode = <span class="hljs-string">`console.log(1);`</span>;
+
+<span class="hljs-keyword">const</span> ast = parser.parse(sourceCode, {
+  <span class="hljs-attr">sourceType</span>: <span class="hljs-string">'unambiguous'</span>
+});
+
+traverse(ast, {
+    <span class="hljs-function"><span class="hljs-title">CallExpression</span>(<span class="hljs-params">path, state</span>)</span> {
+
+    }
+});
+
+<span class="hljs-keyword">const</span> { code, map } = generate(ast);
+<span class="hljs-built_in">console</span>.log(code);
+</code></pre>
+<p>（因为 <code>@babel/parser</code> 等包都是通过 es module 导出的，所以通过 commonjs 的方式引入有的时候要取 default 属性。）</p>
+<p>parser 需要指定代码是不是包含 import、export 等，需要设置 moduleType 为 module 或者 script，我们干脆设置为 unambiguous，让它根据内容是否包含 import、export 来自动设置 moduleType。</p>
+<p>搭好框架之后，我们先设计一下要转换的代码：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">const</span> sourceCode = <span class="hljs-string">`
+    console.log(1);
+
+    function func() {
+        console.info(2);
+    }
+
+    export default class Clazz {
+        say() {
+            console.debug(3);
+        }
+        render() {
+            return &lt;div&gt;{console.error(4)}&lt;/div&gt;
+        }
+    }
+`</span>;
+</code></pre>
+<p>代码没啥具体含义，主要是用于测试功能。</p>
+<p>这里用到了 jsx 的语法，所以 parser 要开启 jsx 的 plugin。</p>
+<p>我们按照前面分析的思路来写一下代码：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">const</span> ast = parser.parse(sourceCode, {
+    <span class="hljs-attr">sourceType</span>: <span class="hljs-string">'unambiguous'</span>,
+    <span class="hljs-attr">plugins</span>: [<span class="hljs-string">'jsx'</span>]
+});
+
+traverse(ast, {
+    CallExpression (path, state) {
+        <span class="hljs-keyword">if</span> ( types.isMemberExpression(path.node.callee) 
+            &amp;&amp; path.node.callee.object.name === <span class="hljs-string">'console'</span> 
+            &amp;&amp; [<span class="hljs-string">'log'</span>, <span class="hljs-string">'info'</span>, <span class="hljs-string">'error'</span>, <span class="hljs-string">'debug'</span>].includes(path.node.callee.property.name) 
+           ) {
+            <span class="hljs-keyword">const</span> { line, column } = path.node.loc.start;
+            path.node.arguments.unshift(types.stringLiteral(<span class="hljs-string">`filename: (<span class="hljs-subst">${line}</span>, <span class="hljs-subst">${column}</span>)`</span>))
+        }
+    }
+});
+
+</code></pre>
+<p>当是 console.xxx 的 AST 时，在参数中插入文件名和行列号，行列号从 AST 的公共属性 loc 上取。</p>
+<p>输出的代码符合预期：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-built_in">console</span>.log(<span class="hljs-string">"filename: (2, 4)"</span>, <span class="hljs-number">1</span>);
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">func</span>(<span class="hljs-params"></span>) </span>{
+  <span class="hljs-built_in">console</span>.info(<span class="hljs-string">"filename: (5, 8)"</span>, <span class="hljs-number">2</span>);
+}
+
+<span class="hljs-keyword">export</span> <span class="hljs-keyword">default</span> <span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">Clazz</span> </span>{
+  <span class="hljs-function"><span class="hljs-title">say</span>(<span class="hljs-params"></span>)</span> {
+    <span class="hljs-built_in">console</span>.debug(<span class="hljs-string">"filename: (10, 12)"</span>, <span class="hljs-number">3</span>);
+  }
+
+  <span class="hljs-function"><span class="hljs-title">render</span>(<span class="hljs-params"></span>)</span> {
+    <span class="hljs-keyword">return</span> <span class="xml"><span class="hljs-tag">&lt;<span class="hljs-name">div</span>&gt;</span>{console.error("filename: (13, 25)", 4)}<span class="hljs-tag">&lt;/<span class="hljs-name">div</span>&gt;</span></span>;
+  }
+
+}
+</code></pre>
+<p>现在判断条件比较复杂，要先判断 path.node.callee 的类型，然后一层层取属性来判断，其实我们可以用 generator 模块来简化.</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">const</span> targetCalleeName = [<span class="hljs-string">'log'</span>, <span class="hljs-string">'info'</span>, <span class="hljs-string">'error'</span>, <span class="hljs-string">'debug'</span>].map(<span class="hljs-function"><span class="hljs-params">item</span> =&gt;</span> <span class="hljs-string">`console.<span class="hljs-subst">${item}</span>`</span>);
+traverse(ast, {
+    <span class="hljs-function"><span class="hljs-title">CallExpression</span>(<span class="hljs-params">path, state</span>)</span> {
+        <span class="hljs-keyword">const</span> calleeName = generate(path.node.callee).code;
+         <span class="hljs-keyword">if</span> (targetCalleeName.includes(calleeName)) {
+            <span class="hljs-keyword">const</span> { line, column } = path.node.loc.start;
+            path.node.arguments.unshift(types.stringLiteral(<span class="hljs-string">`filename: (<span class="hljs-subst">${line}</span>, <span class="hljs-subst">${column}</span>)`</span>))
+        }
+    }
+});
+</code></pre>
+<p>代码瞬间精简了很多，还可以调用 path.get('callee').toString()，一样的效果。</p>
+<h2 data-id="heading-3">需求变更</h2>
+<blockquote>
+<p>后来我们觉得在同一行打印会影响原本的参数的展示，所以想改为在 console.xx 节点之前打印的方式</p>
+</blockquote>
+<h2 data-id="heading-4">思路分析</h2>
+<p>这个需求的改动只是从参数中插入变成了在当前 console.xx 的AST之前插入一个 console.log 的 AST，整体流程还是一样。创建这种较复杂的 AST，我们可以使用 <code>@babel/template</code>包。</p>
+<p>这里有两个注意的点：</p>
+<ol>
+<li>JSX 中的 console 代码不能简单的在前面插入一个节点，而要把整体替换成一个数组表达式，因为 JSX 中只支持写单个表达式。</li>
+</ol>
+<p>也就是</p>
+<pre><code class="hljs language-javascript" lang="javascript">&lt;div&gt;{<span class="hljs-built_in">console</span>.log(<span class="hljs-number">111</span>)}&lt;/div&gt;
+</code></pre>
+<p>要替换成数组的形式</p>
+<pre><code class="hljs language-javascript" lang="javascript">&lt;div&gt;{[<span class="hljs-built_in">console</span>.log(<span class="hljs-string">'filename.js(11,22)'</span>), <span class="hljs-built_in">console</span>.log(<span class="hljs-number">111</span>)]}&lt;/div&gt;
+</code></pre>
+<ol start="2">
+<li>用新的节点替换了旧的节点之后，babel traverse 会继续遍历新节点，这是没必要的，所以要跳过新生成的节点的处理。</li>
+</ol>
+<h2 data-id="heading-5">代码实现</h2>
+<p>插入 AST 可以使用 path.insertBefore 的 api， 而替换整体节点用 path.replaceWith， 判断是 insertBefore 还是 replaceWith 要看当前节点是否在 JSXElement 之下，所以要用path.findParent 方法顺着 path 查找是否有 JSXElement 节点。replace 的新节点要调用 path.skip 跳过后续遍历。</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">if</span> (path.findParent(<span class="hljs-function"><span class="hljs-params">path</span> =&gt;</span> path.isJSXElement())) {
+    path.replaceWith(types.arrayExpression([newNode, path.node]))
+    path.skip();<span class="hljs-comment">// 跳过子节点处理</span>
+} <span class="hljs-keyword">else</span> {
+    path.insertBefore(newNode);
+}
+</code></pre>
+<p>要跳过新的节点的处理，就需要在节点上加一个标记，如果有这个标记的就跳过。</p>
+<p>整体代码如下</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">const</span> targetCalleeName = [<span class="hljs-string">'log'</span>, <span class="hljs-string">'info'</span>, <span class="hljs-string">'error'</span>, <span class="hljs-string">'debug'</span>].map(<span class="hljs-function"><span class="hljs-params">item</span> =&gt;</span> <span class="hljs-string">`console.<span class="hljs-subst">${item}</span>`</span>);
+traverse(ast, {
+    <span class="hljs-function"><span class="hljs-title">CallExpression</span>(<span class="hljs-params">path, state</span>)</span> {
+        <span class="hljs-keyword">if</span> (path.node.isNew) {
+            <span class="hljs-keyword">return</span>;
+        }
+        <span class="hljs-keyword">const</span> calleeName = generate(path.node.callee).code;
+         <span class="hljs-keyword">if</span> (targetCalleeName.includes(calleeName)) {
+            <span class="hljs-keyword">const</span> { line, column } = path.node.loc.start;
+            <span class="hljs-keyword">const</span> newNode = template.expression(<span class="hljs-string">`console.log("filename: (<span class="hljs-subst">${line}</span>, <span class="hljs-subst">${column}</span>)")`</span>)();
+            newNode.isNew = <span class="hljs-literal">true</span>;
+
+            <span class="hljs-keyword">if</span> (path.findParent(<span class="hljs-function"><span class="hljs-params">path</span> =&gt;</span> path.isJSXElement())) {
+                path.replaceWith(types.arrayExpression([newNode, path.node]))
+                path.skip();
+            } <span class="hljs-keyword">else</span> {
+                path.insertBefore(newNode);
+            }
+        }
+    }
+});
+</code></pre>
+<h2 data-id="heading-6">改造成babel插件</h2>
+<p>上面完成的功能想要复用就得封装成插件的形式，babel 支持 transform 插件，形式是函数返回一个对象，对象有 visitor 属性。</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-built_in">module</span>.exports = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">api, options</span>) </span>{
+  <span class="hljs-keyword">return</span> {
+    <span class="hljs-attr">visitor</span>: {
+      <span class="hljs-function"><span class="hljs-title">Identifier</span>(<span class="hljs-params">path, state</span>)</span> {},
+    },
+  };
+}
+</code></pre>
+<p>第一个参数可以拿到 types、template 等常用包的 api，不需要单独引入这些包。</p>
+<p>作为插件用的时候，并不需要自己调用 parse、traverse、generate，只需要提供一个 visitor 函数，在这个函数内完成转换功能。</p>
+<p>state 中可以拿到用户配置信息 options 和 file 信息，filename 就可以通过 state.filename 来取。</p>
+<p>上面的代码很容易可以改造成插件：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">const</span> targetCalleeName = [<span class="hljs-string">'log'</span>, <span class="hljs-string">'info'</span>, <span class="hljs-string">'error'</span>, <span class="hljs-string">'debug'</span>].map(<span class="hljs-function"><span class="hljs-params">item</span> =&gt;</span> <span class="hljs-string">`console.<span class="hljs-subst">${item}</span>`</span>);
+<span class="hljs-built_in">module</span>.exports = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">{types, template}</span>) </span>{
+    <span class="hljs-keyword">return</span> {
+        <span class="hljs-attr">visitor</span>: {
+            <span class="hljs-function"><span class="hljs-title">CallExpression</span>(<span class="hljs-params">path, state</span>)</span> {
+                <span class="hljs-keyword">if</span> (path.node.isNew) {
+                    <span class="hljs-keyword">return</span>;
+                }
+                <span class="hljs-keyword">const</span> calleeName = generate(path.node.callee).code;
+                 <span class="hljs-keyword">if</span> (targetCalleeName.includes(calleeName)) {
+                    <span class="hljs-keyword">const</span> { line, column } = path.node.loc.start;
+                    <span class="hljs-keyword">const</span> newNode = template.expression(<span class="hljs-string">`console.log("<span class="hljs-subst">${state.filename || <span class="hljs-string">'unkown filename'</span>}</span>: (<span class="hljs-subst">${line}</span>, <span class="hljs-subst">${column}</span>)")`</span>)();
+                    newNode.isNew = <span class="hljs-literal">true</span>;
+
+                    <span class="hljs-keyword">if</span> (path.findParent(<span class="hljs-function"><span class="hljs-params">path</span> =&gt;</span> path.isJSXElement())) {
+                        path.replaceWith(types.arrayExpression([newNode, path.node]))
+                        path.skip();
+                    } <span class="hljs-keyword">else</span> {
+                        path.insertBefore(newNode);
+                    }
+                }
+            }
+        }
+    }
+}
+</code></pre>
+<p>然后通过 <code>@babel/core</code> 的 transformSync 方法来调用</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">const</span> { transformFileSync } = <span class="hljs-built_in">require</span>(<span class="hljs-string">'@babel/core'</span>);
+<span class="hljs-keyword">const</span> insertParametersPlugin = <span class="hljs-built_in">require</span>(<span class="hljs-string">'./plugin/parameters-insert-plugin'</span>);
+<span class="hljs-keyword">const</span> path = <span class="hljs-built_in">require</span>(<span class="hljs-string">'path'</span>);
+
+<span class="hljs-keyword">const</span> { code } = transformFileSync(path.join(__dirname, <span class="hljs-string">'./sourceCode.js'</span>), {
+    <span class="hljs-attr">plugins</span>: [insertParametersPlugin],
+    <span class="hljs-attr">parserOpts</span>: {
+        <span class="hljs-attr">sourceType</span>: <span class="hljs-string">'unambiguous'</span>,
+        <span class="hljs-attr">plugins</span>: [<span class="hljs-string">'jsx'</span>]       
+    }
+});
+
+<span class="hljs-built_in">console</span>.log(code);
+</code></pre>
+<p>这样我们成功就把前面调用 parse、traverse、generate 的代码改造成了 babel 插件的形式，只需要提供一个转换函数，traverse 的过程中会自动调用。</p>
+<p>代码放在<a href="https://link.juejin.cn?target=https%3A%2F%2Fgithub.com%2FQuarkGluonPlasma%2Fbabel-plugin-exercize" target="_blank" rel="nofollow noopener noreferrer" title="https://github.com/QuarkGluonPlasma/babel-plugin-exercize" ref="nofollow noopener noreferrer">github</a> 上，可以拉下来跑一下。</p>
+<h2 data-id="heading-7">总结</h2>
+<p>这一节我们通过一个在 console.xxx 中插入参数的实战案例练习了下 babel 的 api。</p>
+<p>首先通过 <code>@babel/parser</code>、<code>@babel/traverse</code>、<code>@babel/generator</code> 来组织编译流程，通过<code>@babel/types</code> 创建AST，通过 path 的各种 api 对 AST 进行操作。</p>
+<p>后来需求改为在前面插入 console.xxx 的方式，我们引入了 <code>@babel/template</code> 包，通过 path.replaceWith 和 path.insertBefore 来操作 AST，需要通过 path.findParent 来判断 AST 的父元素是否包含 JSXElement 类型的 AST。子节点的 AST 要用 path.skip 跳过遍历，而且要对新的 AST 做标记，跳过对新生成的节点的处理。</p>
+<p>之后我们把它改造成了 babel 插件，是一个函数返回一个对象的格式，函数的第一个参数可以拿到各种 babel 常用包的 api，比如 types、template。 插件不需要调用 parse、traverse、generate 等 api，只需要提供 visitor 函数。最后我们通过 @babel/core 的 api 使用了下这个插件。</p>
+<p>学完这一节，我们对前 3 节学习的编译流程、AST、api 都做了一些实践，有了更具体的理解。</p>
+<p>（代码在<a href="https://link.juejin.cn?target=https%3A%2F%2Fgithub.com%2FQuarkGluonPlasma%2Fbabel-plugin-exercize" target="_blank" rel="nofollow noopener noreferrer" title="https://github.com/QuarkGluonPlasma/babel-plugin-exercize" ref="nofollow noopener noreferrer">这里</a>，建议 git clone 下来通过 node 跑一下）</p><style>.markdown-body pre,.markdown-body pre>code.hljs{color:#333;background:#f8f8f8}.hljs-comment,.hljs-quote{color:#998;font-style:italic}.hljs-keyword,.hljs-selector-tag,.hljs-subst{color:#333;font-weight:700}.hljs-literal,.hljs-number,.hljs-tag .hljs-attr,.hljs-template-variable,.hljs-variable{color:teal}.hljs-doctag,.hljs-string{color:#d14}.hljs-section,.hljs-selector-id,.hljs-title{color:#900;font-weight:700}.hljs-subst{font-weight:400}.hljs-class .hljs-title,.hljs-type{color:#458;font-weight:700}.hljs-attribute,.hljs-name,.hljs-tag{color:navy;font-weight:400}.hljs-link,.hljs-regexp{color:#009926}.hljs-bullet,.hljs-symbol{color:#990073}.hljs-built_in,.hljs-builtin-name{color:#0086b3}.hljs-meta{color:#999;font-weight:700}.hljs-deletion{background:#fdd}.hljs-addition{background:#dfd}.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}</style>

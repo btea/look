@@ -1,0 +1,315 @@
+<style>.markdown-body{word-break:break-word;line-height:1.75;font-weight:400;font-size:15px;overflow-x:hidden;color:#333}.markdown-body h1,.markdown-body h2,.markdown-body h3,.markdown-body h4,.markdown-body h5,.markdown-body h6{line-height:1.5;margin-top:35px;margin-bottom:10px;padding-bottom:5px}.markdown-body h1{font-size:30px;margin-bottom:5px}.markdown-body h2{padding-bottom:12px;font-size:24px;border-bottom:1px solid #ececec}.markdown-body h3{font-size:18px;padding-bottom:0}.markdown-body h4{font-size:16px}.markdown-body h5{font-size:15px}.markdown-body h6{margin-top:5px}.markdown-body p{line-height:inherit;margin-top:22px;margin-bottom:22px}.markdown-body img{max-width:100%}.markdown-body hr{border:none;border-top:1px solid #ddd;margin-top:32px;margin-bottom:32px}.markdown-body code{word-break:break-word;border-radius:2px;overflow-x:auto;background-color:#fff5f5;color:#ff502c;font-size:.87em;padding:.065em .4em}.markdown-body code,.markdown-body pre{font-family:Menlo,Monaco,Consolas,Courier New,monospace}.markdown-body pre{overflow:auto;position:relative;line-height:1.75}.markdown-body pre>code{font-size:12px;padding:15px 12px;margin:0;word-break:normal;display:block;overflow-x:auto;color:#333;background:#f8f8f8}.markdown-body a{text-decoration:none;color:#0269c8;border-bottom:1px solid #d1e9ff}.markdown-body a:active,.markdown-body a:hover{color:#275b8c}.markdown-body table{display:inline-block!important;font-size:12px;width:auto;max-width:100%;overflow:auto;border:1px solid #f6f6f6}.markdown-body thead{background:#f6f6f6;color:#000;text-align:left}.markdown-body tr:nth-child(2n){background-color:#fcfcfc}.markdown-body td,.markdown-body th{padding:12px 7px;line-height:24px}.markdown-body td{min-width:120px}.markdown-body blockquote{color:#666;padding:1px 23px;margin:22px 0;border-left:4px solid #cbcbcb;background-color:#f8f8f8}.markdown-body blockquote:after{display:block;content:""}.markdown-body blockquote>p{margin:10px 0}.markdown-body ol,.markdown-body ul{padding-left:28px}.markdown-body ol li,.markdown-body ul li{margin-bottom:0;list-style:inherit}.markdown-body ol li .task-list-item,.markdown-body ul li .task-list-item{list-style:none}.markdown-body ol li .task-list-item ol,.markdown-body ol li .task-list-item ul,.markdown-body ul li .task-list-item ol,.markdown-body ul li .task-list-item ul{margin-top:0}.markdown-body ol ol,.markdown-body ol ul,.markdown-body ul ol,.markdown-body ul ul{margin-top:3px}.markdown-body ol li{padding-left:6px}.markdown-body .contains-task-list{padding-left:0}.markdown-body .task-list-item{list-style:none}@media (max-width:720px){.markdown-body h1{font-size:24px}.markdown-body h2{font-size:20px}.markdown-body h3{font-size:18px}}</style><p>代码 parse 成 AST 之后，可以对 AST 进行 transform，然后 generate 成目标代码，这是转译器（transpiler）的流程，也可以对 AST 进行解释执行，这是解释器（interpreter）的流程。这一节，我们来基于 babel parser 来实现一个简单的 js 解释器。</p>
+<h2 data-id="heading-0">v8 的编译流水线</h2>
+<p>v8 包括 4 部分，parser、ignation 解释器，JIT 编译器，还有 garbage collector（垃圾回收器）。</p>
+<ul>
+<li>parser 负责把源码 parse 成 AST。</li>
+<li>ignation 解释器负责把 AST 转成字节码，然后解释执行</li>
+<li>turbofan 可以把代码编译成机器码，直接执行</li>
+<li>gc 负责堆内存的垃圾回收</li>
+</ul>
+<p><img src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/a87438b18ad24893be5cd16ecc87d49d~tplv-k3u1fbpfcp-watermark.awebp" alt="image.png" loading="lazy" class="medium-zoom-image"></p>
+<p>其实最早期的 v8 是没有字节码的，就是直接解释执行 AST:</p>
+<p><img src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/2e54a738f8f3422bbccece5b00903de7~tplv-k3u1fbpfcp-watermark.awebp" alt="image.png" loading="lazy" class="medium-zoom-image"></p>
+<p>这种直接解释执行 AST 的解释器叫做 tree walker 解释器，这一节，我们来实现一下这种 js 解释器。</p>
+<h2 data-id="heading-1">实现 JS 解释器</h2>
+<h3 data-id="heading-2">思路分析</h3>
+<p>当 parser 把 源码 parse 成 AST 之后，其实已经能够拿到源码的各部分信息了，比如</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">const</span> a = <span class="hljs-number">1</span> + <span class="hljs-number">2</span>;
+</code></pre>
+<p>对应的 AST 是这样的</p>
+<p><img src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/559c01b57e7e4364a7be2fba637092ac~tplv-k3u1fbpfcp-watermark.awebp" alt="image.png" loading="lazy" class="medium-zoom-image"></p>
+<p>当我们处理到 BinarayExpression 节点，operator 是 +，会做加法运算，取左右两边的值相加。</p>
+<p>当我们处理到 NumercLiteral 节点，是数字字面量，直接返回它的值（value）。</p>
+<p>当我们处理到 Identifier 节点，是标识符，直接返回名字（name）。</p>
+<p>当我们处理到 VariableDeclarator，我们就知道是一个变量声明语句，要在作用域 （scope）中放一个属性，属性名为 id 的值， 属性值为 init 的值。而 id 和 init 可以求出来。</p>
+<p>就这样，我们就完成了这段代码的解释执行。</p>
+<h4 data-id="heading-3">代码实现</h4>
+<p>先搭一个基本的结构：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">const</span>  parser = <span class="hljs-built_in">require</span>(<span class="hljs-string">'@babel/parser'</span>);
+<span class="hljs-keyword">const</span> { codeFrameColumns } = <span class="hljs-built_in">require</span>(<span class="hljs-string">'@babel/code-frame'</span>);
+
+<span class="hljs-keyword">const</span> sourceCode = <span class="hljs-string">`
+   const a = 1 + 2;
+`</span>;
+
+<span class="hljs-keyword">const</span> ast = parser.parse(sourceCode, {
+    <span class="hljs-attr">sourceType</span>: <span class="hljs-string">'unambiguous'</span>
+});
+
+<span class="hljs-keyword">const</span> evaluator = (<span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>) </span>{
+
+    <span class="hljs-keyword">const</span> astInterpreters = {
+        Program (node, scope) {
+            node.body.forEach(<span class="hljs-function"><span class="hljs-params">item</span> =&gt;</span> {
+                evaluate(item, scope);
+            })
+        }
+    }
+
+    <span class="hljs-keyword">const</span> evaluate = <span class="hljs-function">(<span class="hljs-params">node, scope</span>) =&gt;</span> {
+        <span class="hljs-keyword">try</span> {
+            <span class="hljs-keyword">return</span> astInterpreters[node.type](node, scope);
+        } <span class="hljs-keyword">catch</span>(e) {
+            <span class="hljs-keyword">if</span> (e &amp;&amp; e.message &amp;&amp; e.message.indexOf(<span class="hljs-string">'astInterpreters[node.type] is not a function'</span>) != -<span class="hljs-number">1</span>) {
+                <span class="hljs-built_in">console</span>.error(<span class="hljs-string">'unsupported ast type: '</span> + node.type);
+                <span class="hljs-built_in">console</span>.error(codeFrameColumns(sourceCode, node.loc, {
+                    <span class="hljs-attr">highlightCode</span>: <span class="hljs-literal">true</span>
+                }));
+            } <span class="hljs-keyword">else</span> {
+                <span class="hljs-built_in">console</span>.error(e.message);
+                <span class="hljs-built_in">console</span>.error(codeFrameColumns(sourceCode, node.loc, {
+                    <span class="hljs-attr">highlightCode</span>: <span class="hljs-literal">true</span>
+                }));                
+            }
+        }
+    }
+    <span class="hljs-keyword">return</span> {
+        evaluate
+    }
+})();
+
+<span class="hljs-keyword">const</span> globalScope = {};
+evaluator.evaluate(ast.program, globalScope);
+</code></pre>
+<p>我们定义了一个 evaluator，这个就是 AST 解释器。从根节点来执行，最外层是 File 节点，取 program 属性，Program 有 body 属性，是 AST 的数组，遍历执行。如果有不支持的节点类型，通过 code frame 来打印 AST 对应的代码，并且提示不支持。</p>
+<p>创建一个全局作用域传入每个 evaluate 方法，用于作用域中变量的声明和取值。</p>
+<p>然后我们来实现一下 VariableDeclarator 节点的解释，在 astInterpreters 添加一下节点的支持：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-function"><span class="hljs-title">VariableDeclaration</span>(<span class="hljs-params">node, scope</span>)</span> {
+    node.declarations.forEach(<span class="hljs-function">(<span class="hljs-params">item</span>) =&gt;</span> {
+        evaluate(item, scope);
+    });
+},
+<span class="hljs-function"><span class="hljs-title">VariableDeclarator</span>(<span class="hljs-params">node, scope</span>)</span> {
+    <span class="hljs-keyword">const</span> declareName = evaluate(node.id);
+    <span class="hljs-keyword">if</span> (scope[declareName]) {
+        <span class="hljs-keyword">throw</span> <span class="hljs-built_in">Error</span>(<span class="hljs-string">'duplicate declare variable：'</span> + declareName);
+    } <span class="hljs-keyword">else</span> {
+        scope[declareName] = evaluate(node.init, scope);
+    }
+},
+<span class="hljs-function"><span class="hljs-title">ExpressionStatement</span>(<span class="hljs-params">node, scope</span>)</span> {
+    <span class="hljs-keyword">return</span> evaluate(node.expression, scope);
+},
+<span class="hljs-function"><span class="hljs-title">BinaryExpression</span>(<span class="hljs-params">node, scope</span>)</span> {
+    <span class="hljs-keyword">const</span> leftValue = evaluate(node.left, scope);
+    <span class="hljs-keyword">const</span> rightValue = evaluate(node.right, scope);;
+    <span class="hljs-keyword">switch</span>(node.operator) {
+        <span class="hljs-keyword">case</span> <span class="hljs-string">'+'</span>:
+            <span class="hljs-keyword">return</span> leftValue + rightValue;
+        <span class="hljs-keyword">case</span> <span class="hljs-string">'-'</span>:
+            <span class="hljs-keyword">return</span> leftValue - rightValue;
+        <span class="hljs-keyword">case</span> <span class="hljs-string">'*'</span>:
+            <span class="hljs-keyword">return</span> leftValue * rightValue;
+        <span class="hljs-keyword">case</span> <span class="hljs-string">'/'</span>:
+            <span class="hljs-keyword">return</span> leftValue / rightValue;
+        <span class="hljs-keyword">default</span>: 
+            <span class="hljs-keyword">throw</span> <span class="hljs-built_in">Error</span>(<span class="hljs-string">'upsupported operator：'</span> + node.operator);
+    }
+},
+<span class="hljs-function"><span class="hljs-title">Identifier</span>(<span class="hljs-params">node, scope</span>)</span> {
+    <span class="hljs-keyword">return</span> node.name;
+},
+<span class="hljs-function"><span class="hljs-title">NumericLiteral</span>(<span class="hljs-params">node, scope</span>)</span> {
+    <span class="hljs-keyword">return</span> node.value;
+}
+</code></pre>
+<p>因为声明语句可能有 <code>const a = 1, b=2;</code> 的一条语句多个声明的情况在，所以这里是 VariableDeclaration 包含多个 VariableDeclarator 的结构。每一个声明要检查下作用域中有没有，如果有的话就报错，没有的话才可以声明。（这里是按照严格模式的规定来解释的）</p>
+<p>BinaryExpression 根据 operator 的不同做不同的求值，只支持了 +、-、*、/ 四种运算。</p>
+<p>执行完成后，我们打印一下 globalScope 看下效果。</p>
+<p><img src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/35841bd724ef42c8b67aae4ef3caadb8~tplv-k3u1fbpfcp-watermark.awebp" alt="image.png" loading="lazy" class="medium-zoom-image"></p>
+<p>发现 globalScope 中已经声明了一个变量 a，值为 3。</p>
+<p>但我们肯定不能这样来查看结果，需要支持 console.log 的全局 api 和函数调用逻辑。</p>
+<p>这个阶段的全部代码（也可以从 <a href="https://link.juejin.cn?target=https%3A%2F%2Fgithub.com%2FQuarkGluonPlasma%2Fbabel-plugin-exercize" target="_blank" rel="nofollow noopener noreferrer" title="https://github.com/QuarkGluonPlasma/babel-plugin-exercize" ref="nofollow noopener noreferrer">github 上</a>下载下来看）：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">const</span>  parser = <span class="hljs-built_in">require</span>(<span class="hljs-string">'@babel/parser'</span>);
+<span class="hljs-keyword">const</span> { codeFrameColumns } = <span class="hljs-built_in">require</span>(<span class="hljs-string">'@babel/code-frame'</span>);
+
+<span class="hljs-keyword">const</span> sourceCode = <span class="hljs-string">`
+   const a = 1 + 2;
+`</span>;
+
+<span class="hljs-keyword">const</span> ast = parser.parse(sourceCode, {
+    <span class="hljs-attr">sourceType</span>: <span class="hljs-string">'unambiguous'</span>
+});
+
+<span class="hljs-keyword">const</span> evaluator = (<span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>) </span>{
+
+    <span class="hljs-keyword">const</span> astInterpreters = {
+        Program (node, scope) {
+            node.body.forEach(<span class="hljs-function"><span class="hljs-params">item</span> =&gt;</span> {
+                evaluate(item, scope);
+            })
+        },
+        <span class="hljs-function"><span class="hljs-title">VariableDeclaration</span>(<span class="hljs-params">node, scope</span>)</span> {
+            node.declarations.forEach(<span class="hljs-function">(<span class="hljs-params">item</span>) =&gt;</span> {
+                evaluate(item, scope);
+            });
+        },
+        <span class="hljs-function"><span class="hljs-title">VariableDeclarator</span>(<span class="hljs-params">node, scope</span>)</span> {
+            <span class="hljs-keyword">const</span> declareName = evaluate(node.id);
+            <span class="hljs-keyword">if</span> (scope[declareName]) {
+                <span class="hljs-keyword">throw</span> <span class="hljs-built_in">Error</span>(<span class="hljs-string">'duplicate declare variable：'</span> + declareName);
+            } <span class="hljs-keyword">else</span> {
+                scope[declareName] = evaluate(node.init, scope);
+            }
+        },
+        <span class="hljs-function"><span class="hljs-title">ExpressionStatement</span>(<span class="hljs-params">node, scope</span>)</span> {
+            <span class="hljs-keyword">return</span> evaluate(node.expression, scope);
+        },
+        <span class="hljs-function"><span class="hljs-title">BinaryExpression</span>(<span class="hljs-params">node, scope</span>)</span> {
+            <span class="hljs-keyword">const</span> leftValue = evaluate(node.left, scope);
+            <span class="hljs-keyword">const</span> rightValue = evaluate(node.right, scope);;
+            <span class="hljs-keyword">switch</span>(node.operator) {
+                <span class="hljs-keyword">case</span> <span class="hljs-string">'+'</span>:
+                    <span class="hljs-keyword">return</span> leftValue + rightValue;
+                <span class="hljs-keyword">case</span> <span class="hljs-string">'-'</span>:
+                    <span class="hljs-keyword">return</span> leftValue - rightValue;
+                <span class="hljs-keyword">case</span> <span class="hljs-string">'*'</span>:
+                    <span class="hljs-keyword">return</span> leftValue * rightValue;
+                <span class="hljs-keyword">case</span> <span class="hljs-string">'/'</span>:
+                    <span class="hljs-keyword">return</span> leftValue / rightValue;
+                <span class="hljs-keyword">default</span>: 
+                    <span class="hljs-keyword">throw</span> <span class="hljs-built_in">Error</span>(<span class="hljs-string">'upsupported operator：'</span> + node.operator);
+            }
+        },
+        <span class="hljs-function"><span class="hljs-title">Identifier</span>(<span class="hljs-params">node, scope</span>)</span> {
+            <span class="hljs-keyword">return</span> node.name;
+        },
+        <span class="hljs-function"><span class="hljs-title">NumericLiteral</span>(<span class="hljs-params">node, scope</span>)</span> {
+            <span class="hljs-keyword">return</span> node.value;
+        }
+    }
+
+    <span class="hljs-keyword">const</span> evaluate = <span class="hljs-function">(<span class="hljs-params">node, scope</span>) =&gt;</span> {
+        <span class="hljs-keyword">try</span> {
+            <span class="hljs-keyword">return</span> astInterpreters[node.type](node, scope);
+        } <span class="hljs-keyword">catch</span>(e) {
+            <span class="hljs-keyword">if</span> (e &amp;&amp; e.message &amp;&amp; e.message.indexOf(<span class="hljs-string">'astInterpreters[node.type] is not a function'</span>) != -<span class="hljs-number">1</span>) {
+                <span class="hljs-built_in">console</span>.error(<span class="hljs-string">'unsupported ast type: '</span> + node.type);
+                <span class="hljs-built_in">console</span>.error(codeFrameColumns(sourceCode, node.loc, {
+                    <span class="hljs-attr">highlightCode</span>: <span class="hljs-literal">true</span>
+                }));
+            } <span class="hljs-keyword">else</span> {
+                <span class="hljs-built_in">console</span>.error(e.message);
+                <span class="hljs-built_in">console</span>.error(codeFrameColumns(sourceCode, node.loc, {
+                    <span class="hljs-attr">highlightCode</span>: <span class="hljs-literal">true</span>
+                }));                
+            }
+        }
+    }
+    <span class="hljs-keyword">return</span> {
+        evaluate
+    }
+})();
+
+<span class="hljs-keyword">const</span> globalScope = {};
+evaluator.evaluate(ast.program, globalScope);
+
+<span class="hljs-built_in">console</span>.log(globalScope);
+</code></pre>
+<h3 data-id="heading-4"></h3>
+<p>要支持函数调用，首先要支持作用域链，因为函数执行会生成一个新的作用域，并且会按照作用域链查找变量。</p>
+<p>我们定义一个 scope 类：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">Scope</span> </span>{
+    <span class="hljs-function"><span class="hljs-title">constructor</span>(<span class="hljs-params">parentScope</span>)</span> {
+        <span class="hljs-built_in">this</span>.parent = parentScope;
+        <span class="hljs-built_in">this</span>.declarations = [];
+    }
+
+    <span class="hljs-function"><span class="hljs-title">set</span>(<span class="hljs-params">name, value</span>)</span> {
+        <span class="hljs-built_in">this</span>.declarations[name] = value;
+    }
+
+    <span class="hljs-function"><span class="hljs-title">getLocal</span>(<span class="hljs-params">name</span>)</span> {
+        <span class="hljs-keyword">return</span> <span class="hljs-built_in">this</span>.declarations[name];
+    }
+
+    <span class="hljs-function"><span class="hljs-title">get</span>(<span class="hljs-params">name</span>)</span> {
+        <span class="hljs-keyword">let</span> res = <span class="hljs-built_in">this</span>.getLocal(name);
+        <span class="hljs-keyword">if</span> (res === <span class="hljs-literal">undefined</span> &amp;&amp; <span class="hljs-built_in">this</span>.parent) {
+            res = <span class="hljs-built_in">this</span>.parent.get(name);
+        }
+        <span class="hljs-keyword">return</span> res;
+    }
+
+    <span class="hljs-function"><span class="hljs-title">has</span>(<span class="hljs-params">name</span>)</span> {
+        <span class="hljs-keyword">return</span> !!<span class="hljs-built_in">this</span>.getLocal(name);
+    }
+}
+</code></pre>
+<p>Scope 有 declarations 属性，代表这个 scope 中声明的变量，并且还有 parentScope 属性指向父 scope，通过 set 方法在作用域中声明变量，通过 getLocal 查找本作用域的变量，通过 get 方法支持按照作用域链不断向上查找变量。</p>
+<p>有了这个方法以后，我们全局 scope 就变成了：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">const</span> globalScope = <span class="hljs-keyword">new</span> Scope();
+
+evaluator.evaluate(ast.program, globalScope);
+</code></pre>
+<p>我们往其中注入全局变量：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">const</span> globalScope = <span class="hljs-keyword">new</span> Scope();
+globalScope.set(<span class="hljs-string">'console'</span>, {
+    <span class="hljs-attr">log</span>: <span class="hljs-function"><span class="hljs-keyword">function</span> (<span class="hljs-params">...args</span>) </span>{
+        <span class="hljs-built_in">console</span>.log(chalk.green(...args));
+    },
+    <span class="hljs-attr">error</span>: <span class="hljs-function"><span class="hljs-keyword">function</span> (<span class="hljs-params">...args</span>) </span>{
+        <span class="hljs-built_in">console</span>.log(chalk.red(...args));
+    },
+    <span class="hljs-attr">warn</span>: <span class="hljs-function"><span class="hljs-keyword">function</span> (<span class="hljs-params">...args</span>) </span>{
+        <span class="hljs-built_in">console</span>.log(chalk.orange(...args));
+    },
+});
+evaluator.evaluate(ast.program, globalScope);
+</code></pre>
+<p>这里我们通过 chalk 做了不同颜色的打印。</p>
+<p>然后需要支持 CallExpression 的函数调用：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-function"><span class="hljs-title">MemberExpression</span>(<span class="hljs-params">node, scope</span>)</span> {
+    <span class="hljs-keyword">const</span> obj = scope.get(evaluate(node.object));
+    <span class="hljs-keyword">return</span> obj[evaluate(node.property)]
+},
+<span class="hljs-function"><span class="hljs-title">CallExpression</span>(<span class="hljs-params">node, scope</span>)</span> {
+    <span class="hljs-keyword">const</span> fn = evaluate(node.callee, scope);
+    <span class="hljs-keyword">const</span> args = node.arguments.map(<span class="hljs-function"><span class="hljs-params">item</span> =&gt;</span> {
+        <span class="hljs-keyword">if</span> (item.type === <span class="hljs-string">'Identifier'</span>) {
+            <span class="hljs-keyword">return</span> scope.get(item.name);
+        }
+        <span class="hljs-keyword">return</span> evaluate(item, scope);
+    });
+    <span class="hljs-keyword">if</span>(node.callee.type === <span class="hljs-string">'MemberExpression'</span>) {
+        <span class="hljs-keyword">const</span> obj = evaluate(node.callee.object, scope);
+        <span class="hljs-keyword">return</span> fn.apply(obj, args);
+    } <span class="hljs-keyword">else</span> {
+        <span class="hljs-keyword">return</span> fn.apply(<span class="hljs-literal">null</span>, args);
+    }
+}
+</code></pre>
+<p>console.log 是一个 MemberExpression，先从 scope 中把 object 属性对应的值取出来，然后再取改值的 property 对应的属性。</p>
+<p>函数调用 CallExpression 需要先从 scope 取出 callee 对应的函数，然后处理参数，如果是标识符 Identifier 的话要从 scope 中取出对应的值，之后调用这个函数，传入参数。如果是 obj.xxx 的形式也就是调用部分是 MemberExpresion 的话则要绑定 this 为该 obj。</p>
+<p>执行下看下效果：</p>
+<p><img src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/328f630546e24fa486ad1a48747ba46f~tplv-k3u1fbpfcp-watermark.awebp" alt="image.png" loading="lazy" class="medium-zoom-image"></p>
+<p>能够打印正确的结果，我们的 JS 解释器已经支持函数调用了。</p>
+<h3 data-id="heading-5">函数调用</h3>
+<p>现在我们只是在全局注入函数，如果用户想自定义函数呢，我们还需要支持函数声明语句 FunctionDeclaration 的解释。</p>
+<p>FunctionDeclaration 其实也是往作用域中放了一个值，只不过这个值是一个函数，流程和变量声明 VariableDeclarator 的解释类似。</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-function"><span class="hljs-title">FunctionDeclaration</span>(<span class="hljs-params">node, scope</span>)</span> {
+    <span class="hljs-keyword">const</span> declareName = evaluate(node.id);
+    <span class="hljs-keyword">if</span> (scope.get(declareName)) {
+        <span class="hljs-keyword">throw</span> <span class="hljs-built_in">Error</span>(<span class="hljs-string">'duplicate declare variable：'</span> + declareName);
+    } <span class="hljs-keyword">else</span> {
+        scope.set(declareName, <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">...args</span>) </span>{
+            <span class="hljs-keyword">const</span> funcScope = <span class="hljs-keyword">new</span> Scope();
+            funcScope.parent = scope;
+
+            node.params.forEach(<span class="hljs-function">(<span class="hljs-params">item, index</span>) =&gt;</span> {
+                funcScope.set(item.name, args[index]);
+            });
+            funcScope.set(<span class="hljs-string">'this'</span>, <span class="hljs-built_in">this</span>);
+            <span class="hljs-keyword">return</span> evaluate(node.body, funcScope);
+        });
+    }
+},
+</code></pre>
+<p>函数会生成一个新的 scope，我们把函数接收到的参数按照声明的 params 的名字，依次设置在 scope 中，this 也设置到作用域中（其实作用域和 this 是平行的关系，都在执行上下文中，这里简单实现下），然后调用这个函数的时候，就可以在作用域中查找到这个函数，并传入参数执行了。</p>
+<p><img src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/352e6c193f2c4d95aad7977b2a22f30f~tplv-k3u1fbpfcp-watermark.awebp" alt="image.png" loading="lazy" class="medium-zoom-image"></p>
+<h2 data-id="heading-6">总结</h2>
+<p>前面的章节，我们学习了 AST，知道 AST 可以进行 transform 然后生成代码，这一节，我们解释执行了 AST，实现了一个简单的 JS 解释器，可以定义函数、变量，有作用域链，可以注入全局 api。</p>
+<p>v8 最早的实现方式也是直接解释执行 AST，但是现在多了一层，会先转成字节码，然后再解释执行。但是解释执行的思路和 AST 的方式类似。</p>
+<p>我们是用 js 解释的 js，所以 funciton 的 apply 方法、全局 api 等都可以直接用，实际上一般 js 引擎都是 c++ 写的，没有这些东西，所有的都要自己去实现，包括内存分配（堆、调用栈）、全局 api等。</p>
+<p>希望这一节能够让你对解释器的实现有所理解。</p>
+<p>（代码在<a href="https://link.juejin.cn?target=https%3A%2F%2Fgithub.com%2FQuarkGluonPlasma%2Fbabel-plugin-exercize" target="_blank" rel="nofollow noopener noreferrer" title="https://github.com/QuarkGluonPlasma/babel-plugin-exercize" ref="nofollow noopener noreferrer">这里</a>，建议 git clone 下来通过 node 跑一下）</p><style>.markdown-body pre,.markdown-body pre>code.hljs{color:#333;background:#f8f8f8}.hljs-comment,.hljs-quote{color:#998;font-style:italic}.hljs-keyword,.hljs-selector-tag,.hljs-subst{color:#333;font-weight:700}.hljs-literal,.hljs-number,.hljs-tag .hljs-attr,.hljs-template-variable,.hljs-variable{color:teal}.hljs-doctag,.hljs-string{color:#d14}.hljs-section,.hljs-selector-id,.hljs-title{color:#900;font-weight:700}.hljs-subst{font-weight:400}.hljs-class .hljs-title,.hljs-type{color:#458;font-weight:700}.hljs-attribute,.hljs-name,.hljs-tag{color:navy;font-weight:400}.hljs-link,.hljs-regexp{color:#009926}.hljs-bullet,.hljs-symbol{color:#990073}.hljs-built_in,.hljs-builtin-name{color:#0086b3}.hljs-meta{color:#999;font-weight:700}.hljs-deletion{background:#fdd}.hljs-addition{background:#dfd}.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}</style>

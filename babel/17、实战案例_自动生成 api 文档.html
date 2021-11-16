@@ -1,0 +1,265 @@
+<style>.markdown-body{word-break:break-word;line-height:1.75;font-weight:400;font-size:15px;overflow-x:hidden;color:#333}.markdown-body h1,.markdown-body h2,.markdown-body h3,.markdown-body h4,.markdown-body h5,.markdown-body h6{line-height:1.5;margin-top:35px;margin-bottom:10px;padding-bottom:5px}.markdown-body h1{font-size:30px;margin-bottom:5px}.markdown-body h2{padding-bottom:12px;font-size:24px;border-bottom:1px solid #ececec}.markdown-body h3{font-size:18px;padding-bottom:0}.markdown-body h4{font-size:16px}.markdown-body h5{font-size:15px}.markdown-body h6{margin-top:5px}.markdown-body p{line-height:inherit;margin-top:22px;margin-bottom:22px}.markdown-body img{max-width:100%}.markdown-body hr{border:none;border-top:1px solid #ddd;margin-top:32px;margin-bottom:32px}.markdown-body code{word-break:break-word;border-radius:2px;overflow-x:auto;background-color:#fff5f5;color:#ff502c;font-size:.87em;padding:.065em .4em}.markdown-body code,.markdown-body pre{font-family:Menlo,Monaco,Consolas,Courier New,monospace}.markdown-body pre{overflow:auto;position:relative;line-height:1.75}.markdown-body pre>code{font-size:12px;padding:15px 12px;margin:0;word-break:normal;display:block;overflow-x:auto;color:#333;background:#f8f8f8}.markdown-body a{text-decoration:none;color:#0269c8;border-bottom:1px solid #d1e9ff}.markdown-body a:active,.markdown-body a:hover{color:#275b8c}.markdown-body table{display:inline-block!important;font-size:12px;width:auto;max-width:100%;overflow:auto;border:1px solid #f6f6f6}.markdown-body thead{background:#f6f6f6;color:#000;text-align:left}.markdown-body tr:nth-child(2n){background-color:#fcfcfc}.markdown-body td,.markdown-body th{padding:12px 7px;line-height:24px}.markdown-body td{min-width:120px}.markdown-body blockquote{color:#666;padding:1px 23px;margin:22px 0;border-left:4px solid #cbcbcb;background-color:#f8f8f8}.markdown-body blockquote:after{display:block;content:""}.markdown-body blockquote>p{margin:10px 0}.markdown-body ol,.markdown-body ul{padding-left:28px}.markdown-body ol li,.markdown-body ul li{margin-bottom:0;list-style:inherit}.markdown-body ol li .task-list-item,.markdown-body ul li .task-list-item{list-style:none}.markdown-body ol li .task-list-item ol,.markdown-body ol li .task-list-item ul,.markdown-body ul li .task-list-item ol,.markdown-body ul li .task-list-item ul{margin-top:0}.markdown-body ol ol,.markdown-body ol ul,.markdown-body ul ol,.markdown-body ul ul{margin-top:3px}.markdown-body ol li{padding-left:6px}.markdown-body .contains-task-list{padding-left:0}.markdown-body .task-list-item{list-style:none}@media (max-width:720px){.markdown-body h1{font-size:24px}.markdown-body h2{font-size:20px}.markdown-body h3{font-size:18px}}</style><p>如果我们提供了一个 sdk 给别人用，那么要把有哪些 api、都有什么参数等等信息写到文档中，并且每次改代码都要同步更新下文档。这件事情很繁琐，靠人来维护也不靠谱，可不可以自动生成呢？</p>
+<p>api 文档的生成也是根据源码信息来的，有哪些函数、类、都有啥参数、参数是什么类型，这些都在源码里面，而更多信息一般都会写在注释里。我们可以通过 babel 取到这些信息，那么自然可以自动生成文档。</p>
+<h2 data-id="heading-0">思路分析</h2>
+<p>比如这样一段代码：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-comment">/**
+ * say 你好
+ * <span class="hljs-doctag">@param </span>name 名字
+ */</span>
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">sayHi</span> (<span class="hljs-params">name: string, age: number, a: boolean</span>) </span>{
+    <span class="hljs-built_in">console</span>.log(<span class="hljs-string">`hi, <span class="hljs-subst">${name}</span>`</span>);
+    <span class="hljs-keyword">return</span> <span class="hljs-string">`hi, <span class="hljs-subst">${name}</span>`</span>;
+}
+
+<span class="hljs-comment">/**
+ * 类测试
+ */</span>
+<span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">Guang</span> </span>{
+    <span class="hljs-attr">name</span>: string; <span class="hljs-comment">// name 属性</span>
+    <span class="hljs-function"><span class="hljs-title">constructor</span>(<span class="hljs-params">name: string</span>)</span> {
+        <span class="hljs-built_in">this</span>.name = name;
+    }
+
+    <span class="hljs-comment">/**
+     * 方法测试
+     */</span>
+    sayHi (): string {
+        <span class="hljs-keyword">return</span> <span class="hljs-string">`hi, I'm <span class="hljs-subst">${<span class="hljs-built_in">this</span>.name}</span>`</span>;
+    }
+}
+</code></pre>
+<p>我们要处理 FunctionDeclaration 节点和 ClassDelcaration 节点：</p>
+<p>FunctionDelcaration：</p>
+<ul>
+<li>函数名： path.get('id').toString()</li>
+<li>参数： path.get('params')</li>
+<li>返回值类型： path.get('returnType').getTypeAnnotation()</li>
+<li>注释信息：path.node.leadingComments</li>
+</ul>
+<p>注释可以使用 doctrine 来 parse，支持 @xxx 的解析</p>
+<p>ClassDeclaration：</p>
+<ul>
+<li>类名：path.get('id').toString()</li>
+<li>方法：travese ClassMethod 节点取信息（包括 constructor 和 method）</li>
+<li>属性： traverse ClassProperty 节点取信息</li>
+<li>注释信息： path.node.leadingComments</li>
+</ul>
+<p>有了这些信息之后，就可以打印成文档了，打印就是拼接字符串的过程，可以支持 markdown、html、json 等格式。</p>
+<p>我们来写下代码。</p>
+<h2 data-id="heading-1">代码实现</h2>
+<p>首先搭一个插件的基本结构：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">const</span> { declare } = <span class="hljs-built_in">require</span>(<span class="hljs-string">'@babel/helper-plugin-utils'</span>);
+
+<span class="hljs-keyword">const</span> autoDocumentPlugin = declare(<span class="hljs-function">(<span class="hljs-params">api, options, dirname</span>) =&gt;</span> {
+    api.assertVersion(<span class="hljs-number">7</span>);
+
+    <span class="hljs-keyword">return</span> {
+        <span class="hljs-function"><span class="hljs-title">pre</span>(<span class="hljs-params">file</span>)</span> {
+            file.set(<span class="hljs-string">'docs'</span>, []);
+        },
+        <span class="hljs-attr">visitor</span>: {
+            <span class="hljs-function"><span class="hljs-title">FunctionDeclaration</span>(<span class="hljs-params">path, state</span>)</span> {
+            },
+            ClassDeclaration (path, state) {
+            }
+         },
+         <span class="hljs-function"><span class="hljs-title">post</span>(<span class="hljs-params">file</span>)</span> {
+            <span class="hljs-keyword">const</span> docs = file.get(<span class="hljs-string">'docs'</span>);
+        }
+    }
+}
+</code></pre>
+<p>我们在全局的 file 对象中放一个 docs 的数组，用于收集信息。</p>
+<h3 data-id="heading-2">FunctionDeclaration 的处理</h3>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-function"><span class="hljs-title">FunctionDeclaration</span>(<span class="hljs-params">path, state</span>)</span> {
+    <span class="hljs-keyword">const</span> docs = state.file.get(<span class="hljs-string">'docs'</span>);
+    docs.push({
+        <span class="hljs-attr">type</span>: <span class="hljs-string">'function'</span>,
+        <span class="hljs-attr">name</span>: path.get(<span class="hljs-string">'id'</span>).toString(),
+        <span class="hljs-attr">params</span>: path.get(<span class="hljs-string">'params'</span>).map(<span class="hljs-function"><span class="hljs-params">paramPath</span>=&gt;</span> {
+            <span class="hljs-keyword">return</span> {
+                <span class="hljs-attr">name</span>: paramPath.toString(),
+                <span class="hljs-attr">type</span>: resolveType(paramPath.getTypeAnnotation())
+            }
+        }),
+        <span class="hljs-attr">return</span>: resolveType(path.get(<span class="hljs-string">'returnType'</span>).getTypeAnnotation()),
+        <span class="hljs-attr">doc</span>: path.node.leadingComments &amp;&amp; parseComment(path.node.leadingComments[<span class="hljs-number">0</span>].value)
+    });
+    state.file.set(<span class="hljs-string">'docs'</span>, docs);
+},
+</code></pre>
+<p>收集各种信息。</p>
+<p>其中要注意的有两点：</p>
+<ul>
+<li>path.getTypeAnnotation() 取到的类型需要做进一步的处理：</li>
+</ul>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">resolveType</span>(<span class="hljs-params">tsType</span>) </span>{
+    <span class="hljs-keyword">const</span> typeAnnotation = tsType.typeAnnotation;
+    <span class="hljs-keyword">if</span> (!typeAnnotation) {
+        <span class="hljs-keyword">return</span>;
+    }
+    <span class="hljs-keyword">switch</span> (typeAnnotation.type) {
+        <span class="hljs-keyword">case</span> <span class="hljs-string">'TSStringKeyword'</span>: 
+            <span class="hljs-keyword">return</span> <span class="hljs-string">'string'</span>;
+        <span class="hljs-keyword">case</span> <span class="hljs-string">'TSNumberKeyword'</span>:
+            <span class="hljs-keyword">return</span> <span class="hljs-string">'number'</span>;
+        <span class="hljs-keyword">case</span> <span class="hljs-string">'TSBooleanKeyword'</span>:
+            <span class="hljs-keyword">return</span> <span class="hljs-string">'boolean'</span>;
+    }
+}
+</code></pre>
+<ul>
+<li>注释信息用 doctrine 来 parse</li>
+</ul>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">const</span> doctrine = <span class="hljs-built_in">require</span>(<span class="hljs-string">'doctrine'</span>);
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">parseComment</span>(<span class="hljs-params">commentStr</span>) </span>{
+    <span class="hljs-keyword">if</span> (!commentStr) {
+        <span class="hljs-keyword">return</span>;
+    }
+    <span class="hljs-keyword">return</span> doctrine.parse(commentStr, {
+        <span class="hljs-attr">unwrap</span>: <span class="hljs-literal">true</span>
+    });
+}
+</code></pre>
+<h3 data-id="heading-3">ClassDeclaration 的处理</h3>
+<p>ClassDeclaration 的处理复杂一些，要分别提取 constructor、method、properties 的信息。</p>
+<p>首先，收集 class 的整体信息</p>
+<pre><code class="hljs language-javascript" lang="javascript">ClassDeclaration (path, state) {
+    <span class="hljs-keyword">const</span> docs = state.file.get(<span class="hljs-string">'docs'</span>);
+    <span class="hljs-keyword">const</span> classInfo = {
+        <span class="hljs-attr">type</span>: <span class="hljs-string">'class'</span>,
+        <span class="hljs-attr">name</span>: path.get(<span class="hljs-string">'id'</span>).toString(),
+        <span class="hljs-attr">constructorInfo</span>: {},
+        <span class="hljs-attr">methodsInfo</span>: [],
+        <span class="hljs-attr">propertiesInfo</span>: []
+    };
+    <span class="hljs-keyword">if</span> (path.node.leadingComments) {
+        classInfo.doc = parseComment(path.node.leadingComments[<span class="hljs-number">0</span>].value);
+    }
+    docs.push(classInfo);
+    state.file.set(<span class="hljs-string">'docs'</span>, docs);
+}
+</code></pre>
+<p>然后遍历 ClassProperty 和 ClassMethod 并提取信息</p>
+<pre><code class="hljs language-javascript" lang="javascript">path.traverse({
+    <span class="hljs-function"><span class="hljs-title">ClassProperty</span>(<span class="hljs-params">path</span>)</span> {
+        classInfo.propertiesInfo.push({
+            <span class="hljs-attr">name</span>: path.get(<span class="hljs-string">'key'</span>).toString(),
+            <span class="hljs-attr">type</span>: resolveType(path.getTypeAnnotation()),
+            <span class="hljs-attr">doc</span>: [path.node.leadingComments, path.node.trailingComments].filter(<span class="hljs-built_in">Boolean</span>).map(<span class="hljs-function"><span class="hljs-params">comment</span> =&gt;</span> {
+                <span class="hljs-keyword">return</span> parseComment(comment.value);
+            }).filter(<span class="hljs-built_in">Boolean</span>)
+        })
+    },
+    <span class="hljs-function"><span class="hljs-title">ClassMethod</span>(<span class="hljs-params">path</span>)</span> {
+        <span class="hljs-keyword">if</span> (path.node.kind === <span class="hljs-string">'constructor'</span>) {
+            classInfo.constructorInfo = {
+                <span class="hljs-attr">params</span>: path.get(<span class="hljs-string">'params'</span>).map(<span class="hljs-function"><span class="hljs-params">paramPath</span>=&gt;</span> {
+                    <span class="hljs-keyword">return</span> {
+                        <span class="hljs-attr">name</span>: paramPath.toString(),
+                        <span class="hljs-attr">type</span>: resolveType(paramPath.getTypeAnnotation()),
+                        <span class="hljs-attr">doc</span>: parseComment(path.node.leadingComments[<span class="hljs-number">0</span>].value)
+                    }
+                })
+            }
+        } <span class="hljs-keyword">else</span> {
+            classInfo.methodsInfo.push({
+                <span class="hljs-attr">name</span>: path.get(<span class="hljs-string">'key'</span>).toString(),
+                <span class="hljs-attr">doc</span>: parseComment(path.node.leadingComments[<span class="hljs-number">0</span>].value),
+                <span class="hljs-attr">params</span>: path.get(<span class="hljs-string">'params'</span>).map(<span class="hljs-function"><span class="hljs-params">paramPath</span>=&gt;</span> {
+                    <span class="hljs-keyword">return</span> {
+                        <span class="hljs-attr">name</span>: paramPath.toString(),
+                        <span class="hljs-attr">type</span>: resolveType(paramPath.getTypeAnnotation())
+                    }
+                }),
+                <span class="hljs-attr">return</span>: resolveType(path.getTypeAnnotation())
+            })
+        }
+    }
+});
+</code></pre>
+<p>这样处理完之后，在 post 阶段就能拿到所有的信息了，之后就是文档的生成</p>
+<h3 data-id="heading-4">文档生成</h3>
+<p>文档生成其实就是对象打印的过程，我们可以通过插件的参数传入 format，然后用不同的 renderer 来渲染，之后写入 docs 目录。</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-function"><span class="hljs-title">post</span>(<span class="hljs-params">file</span>)</span> {
+    <span class="hljs-keyword">const</span> docs = file.get(<span class="hljs-string">'docs'</span>);
+    <span class="hljs-keyword">const</span> res = generate(docs, options.format);
+    fse.ensureDirSync(options.outputDir);
+    fse.writeFileSync(path.join(options.outputDir, <span class="hljs-string">'docs'</span> + res.ext), res.content);
+}
+</code></pre>
+<p>renderer 其实就是拼接字符串，我们实现一下 markdown 的（比较简单的实现，大家如果有需求需要继续完善 renderer 和信息的提取，其实这里也可以用模版引擎来做，更易于维护）</p>
+<p>function 和 class 分别拼接不同的字符串</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-built_in">module</span>.exports = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">docs</span>) </span>{
+    <span class="hljs-keyword">let</span> str = <span class="hljs-string">''</span>;
+
+    docs.forEach(<span class="hljs-function"><span class="hljs-params">doc</span> =&gt;</span> {
+        <span class="hljs-keyword">if</span> (doc.type === <span class="hljs-string">'function'</span>) {
+            str += <span class="hljs-string">'##'</span> + doc.name + <span class="hljs-string">'\n'</span>;
+            str += doc.doc.description + <span class="hljs-string">'\n'</span>;
+            <span class="hljs-keyword">if</span> (doc.doc.tags) {
+                doc.doc.tags.forEach(<span class="hljs-function"><span class="hljs-params">tag</span> =&gt;</span> {
+                    str += tag.name + <span class="hljs-string">': '</span> + tag.description + <span class="hljs-string">'\n'</span>; 
+                })
+            }
+            str += <span class="hljs-string">'&gt;'</span> + doc.name + <span class="hljs-string">'('</span>;
+            <span class="hljs-keyword">if</span> (doc.params) {
+                str += doc.params.map(<span class="hljs-function"><span class="hljs-params">param</span> =&gt;</span> {
+                    <span class="hljs-keyword">return</span> param.name + <span class="hljs-string">': '</span> + param.type;
+                }).join(<span class="hljs-string">', '</span>);
+            }
+            str += <span class="hljs-string">')\n'</span>;
+            str += <span class="hljs-string">'#### Parameters:\n'</span>;
+            <span class="hljs-keyword">if</span> (doc.params) {
+                str += doc.params.map(<span class="hljs-function"><span class="hljs-params">param</span> =&gt;</span> {
+                    <span class="hljs-keyword">return</span> <span class="hljs-string">'-'</span> + param.name + <span class="hljs-string">'('</span> + param.type + <span class="hljs-string">')'</span>;
+                }).join(<span class="hljs-string">'\n'</span>);
+            }
+            str += <span class="hljs-string">'\n'</span>
+        } <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> (doc.type === <span class="hljs-string">'class'</span>){
+            str += <span class="hljs-string">'##'</span> + doc.name + <span class="hljs-string">'\n'</span>;
+            str += doc.doc.description + <span class="hljs-string">'\n'</span>;
+            <span class="hljs-keyword">if</span> (doc.doc.tags) {
+                doc.doc.tags.forEach(<span class="hljs-function"><span class="hljs-params">tag</span> =&gt;</span> {
+                    str += tag.name + <span class="hljs-string">': '</span> + tag.description + <span class="hljs-string">'\n'</span>; 
+                })
+            }
+            str += <span class="hljs-string">'&gt; new '</span> + doc.name + <span class="hljs-string">'('</span>;
+            <span class="hljs-keyword">if</span> (doc.params) {
+                str += doc.params.map(<span class="hljs-function"><span class="hljs-params">param</span> =&gt;</span> {
+                    <span class="hljs-keyword">return</span> param.name + <span class="hljs-string">': '</span> + param.type;
+                }).join(<span class="hljs-string">', '</span>);
+            }
+            str += <span class="hljs-string">')\n'</span>;
+            str += <span class="hljs-string">'#### Properties:\n'</span>;
+            <span class="hljs-keyword">if</span> (doc.propertiesInfo) {
+                doc.propertiesInfo.forEach(<span class="hljs-function"><span class="hljs-params">param</span> =&gt;</span> {
+                    str += <span class="hljs-string">'-'</span> + param.name + <span class="hljs-string">':'</span> + param.type + <span class="hljs-string">'\n'</span>;
+                });
+            }
+            str += <span class="hljs-string">'#### Methods:\n'</span>;
+            <span class="hljs-keyword">if</span> (doc.methodsInfo) {
+                doc.methodsInfo.forEach(<span class="hljs-function"><span class="hljs-params">param</span> =&gt;</span> {
+                    str += <span class="hljs-string">'-'</span> + param.name + <span class="hljs-string">'\n'</span>;
+                });
+            }
+            str += <span class="hljs-string">'\n'</span>
+        }
+        str += <span class="hljs-string">'\n'</span>
+    })
+    <span class="hljs-keyword">return</span> str;
+}
+</code></pre>
+<p>这样我们就完成了 api 文档的自动生成。</p>
+<h2 data-id="heading-5">测试</h2>
+<p>处理的代码为：</p>
+<p><img src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/8f5bff585750498a934a00118a36fff4~tplv-k3u1fbpfcp-watermark.awebp" alt="" loading="lazy" class="medium-zoom-image"></p>
+<p>生成的文档：</p>
+<p><img src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/a2a7c1463fc44bc48f7a0c01539f168f~tplv-k3u1fbpfcp-watermark.awebp" alt="" loading="lazy" class="medium-zoom-image"></p>
+<p>可以继续完善，比如生成这样的 html 文档：</p>
+<img src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/19af0f77ec024f84b6f8e89a7e68c479~tplv-k3u1fbpfcp-watermark.awebp" width="50%" loading="lazy" class="medium-zoom-image">
+<h2 data-id="heading-6">总结</h2>
+<p>这一节我们梳理了自动生成 api 文档的实现思路，如果对外提供 sdk 的话，那么自动文档生成是个刚需，不然每次都要人工同步改。</p>
+<p>自动文档生成主要是信息的提取和渲染两部分，提取源码信息我们只需要分别处理 ClassDeclaration、FunctionDeclaration 或其他节点，然后从 ast 取出名字、注释等信息，之后通过 renderer 拼接成不同的字符串。</p>
+<p>（代码在<a href="https://link.juejin.cn?target=https%3A%2F%2Fgithub.com%2FQuarkGluonPlasma%2Fbabel-plugin-exercize" target="_blank" rel="nofollow noopener noreferrer" title="https://github.com/QuarkGluonPlasma/babel-plugin-exercize" ref="nofollow noopener noreferrer">这里</a>，建议 git clone 下来通过 node 跑一下）</p><style>.markdown-body pre,.markdown-body pre>code.hljs{color:#333;background:#f8f8f8}.hljs-comment,.hljs-quote{color:#998;font-style:italic}.hljs-keyword,.hljs-selector-tag,.hljs-subst{color:#333;font-weight:700}.hljs-literal,.hljs-number,.hljs-tag .hljs-attr,.hljs-template-variable,.hljs-variable{color:teal}.hljs-doctag,.hljs-string{color:#d14}.hljs-section,.hljs-selector-id,.hljs-title{color:#900;font-weight:700}.hljs-subst{font-weight:400}.hljs-class .hljs-title,.hljs-type{color:#458;font-weight:700}.hljs-attribute,.hljs-name,.hljs-tag{color:navy;font-weight:400}.hljs-link,.hljs-regexp{color:#009926}.hljs-bullet,.hljs-symbol{color:#990073}.hljs-built_in,.hljs-builtin-name{color:#0086b3}.hljs-meta{color:#999;font-weight:700}.hljs-deletion{background:#fdd}.hljs-addition{background:#dfd}.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}</style>

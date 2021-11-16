@@ -1,0 +1,170 @@
+<style>.markdown-body{word-break:break-word;line-height:1.75;font-weight:400;font-size:15px;overflow-x:hidden;color:#333}.markdown-body h1,.markdown-body h2,.markdown-body h3,.markdown-body h4,.markdown-body h5,.markdown-body h6{line-height:1.5;margin-top:35px;margin-bottom:10px;padding-bottom:5px}.markdown-body h1{font-size:30px;margin-bottom:5px}.markdown-body h2{padding-bottom:12px;font-size:24px;border-bottom:1px solid #ececec}.markdown-body h3{font-size:18px;padding-bottom:0}.markdown-body h4{font-size:16px}.markdown-body h5{font-size:15px}.markdown-body h6{margin-top:5px}.markdown-body p{line-height:inherit;margin-top:22px;margin-bottom:22px}.markdown-body img{max-width:100%}.markdown-body hr{border:none;border-top:1px solid #ddd;margin-top:32px;margin-bottom:32px}.markdown-body code{word-break:break-word;border-radius:2px;overflow-x:auto;background-color:#fff5f5;color:#ff502c;font-size:.87em;padding:.065em .4em}.markdown-body code,.markdown-body pre{font-family:Menlo,Monaco,Consolas,Courier New,monospace}.markdown-body pre{overflow:auto;position:relative;line-height:1.75}.markdown-body pre>code{font-size:12px;padding:15px 12px;margin:0;word-break:normal;display:block;overflow-x:auto;color:#333;background:#f8f8f8}.markdown-body a{text-decoration:none;color:#0269c8;border-bottom:1px solid #d1e9ff}.markdown-body a:active,.markdown-body a:hover{color:#275b8c}.markdown-body table{display:inline-block!important;font-size:12px;width:auto;max-width:100%;overflow:auto;border:1px solid #f6f6f6}.markdown-body thead{background:#f6f6f6;color:#000;text-align:left}.markdown-body tr:nth-child(2n){background-color:#fcfcfc}.markdown-body td,.markdown-body th{padding:12px 7px;line-height:24px}.markdown-body td{min-width:120px}.markdown-body blockquote{color:#666;padding:1px 23px;margin:22px 0;border-left:4px solid #cbcbcb;background-color:#f8f8f8}.markdown-body blockquote:after{display:block;content:""}.markdown-body blockquote>p{margin:10px 0}.markdown-body ol,.markdown-body ul{padding-left:28px}.markdown-body ol li,.markdown-body ul li{margin-bottom:0;list-style:inherit}.markdown-body ol li .task-list-item,.markdown-body ul li .task-list-item{list-style:none}.markdown-body ol li .task-list-item ol,.markdown-body ol li .task-list-item ul,.markdown-body ul li .task-list-item ol,.markdown-body ul li .task-list-item ul{margin-top:0}.markdown-body ol ol,.markdown-body ol ul,.markdown-body ul ol,.markdown-body ul ul{margin-top:3px}.markdown-body ol li{padding-left:6px}.markdown-body .contains-task-list{padding-left:0}.markdown-body .task-list-item{list-style:none}@media (max-width:720px){.markdown-body h1{font-size:24px}.markdown-body h2{font-size:20px}.markdown-body h3{font-size:18px}}</style><p>babel 编译的第一步是把源码 parse 成抽象语法树 AST （Abstract Syntax Tree），后续对这个 AST 进行转换。（之所以叫抽象语法树是因为省略掉了源码中的分隔符、注释等内容）</p>
+<p>AST 也是有标准的，JS parser 的 AST 大多是 <a href="https://link.juejin.cn?target=https%3A%2F%2Fgithub.com%2Festree%2Festree" target="_blank" rel="nofollow noopener noreferrer" title="https://github.com/estree/estree" ref="nofollow noopener noreferrer">estree 标准</a>，从 SpiderMonkey 的 AST 标准扩展而来。babel 的整个编译流程都是围绕 AST 来的，这一节我们来学一下 AST。</p>
+<p>熟悉了 AST，也就是知道转译器和 JS 引擎是怎么理解代码的，对深入掌握 Javascript 也有很大的好处。</p>
+<h2 data-id="heading-0">常见的 AST 节点</h2>
+<p>AST 是对源码的抽象，字面量、标识符、表达式、语句、模块语法、class 语法都有各自的 AST。我们分别来了解一下：</p>
+<h3 data-id="heading-1">Literal</h3>
+<p>Literal 是字面量的意思，比如 <code>let name = 'guang'</code>中，<code>'guang'</code>就是一个字符串字面量 StringLiteral，相应的还有数字字面量 NumericLiteral，布尔字面量 BooleanLiteral，字符串字面量  StringLiteral，正则表达式字面量 RegExpLiteral 等。</p>
+<p><img src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/29185815036a4ea1878484ba773a3b6e~tplv-k3u1fbpfcp-watermark.awebp" alt="" loading="lazy" class="medium-zoom-image"></p>
+<p>代码中的字面量很多，babel 就是通过 xxLiteral 来抽象这部分内容的。</p>
+<h3 data-id="heading-2">Identifier</h3>
+<p>Identifer 是标识符的意思，变量名、属性名、参数名等各种声明和引用的名字，都是Identifer。我们知道，JS 中的标识符只能包含字母或数字或下划线（“_”）或美元符号（“$”），且不能以数字开头。这是 Identifier 的词法特点。</p>
+<p>来尝试分析一下，下面这一段代码里面有多少 Identifier 呢？</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">const</span> name = <span class="hljs-string">'guang'</span>;
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">say</span>(<span class="hljs-params">name</span>) </span>{
+  <span class="hljs-built_in">console</span>.log(name);
+}
+
+<span class="hljs-keyword">const</span> obj = {
+  <span class="hljs-attr">name</span>: <span class="hljs-string">'guang'</span>
+}
+</code></pre>
+<p>答案是这些</p>
+<p><img src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/9a4b54e6512a4da7ad5c99e7a61a62e9~tplv-k3u1fbpfcp-watermark.awebp" alt="" loading="lazy" class="medium-zoom-image"></p>
+<h3 data-id="heading-3">Statement</h3>
+<p>statement 是语句，它是可以独立执行的单位，比如 break、continue、debugger、return 或者 if 语句、while 语句、for 语句，还有声明语句，表达式语句等。我们写的每一条可以独立执行的代码都是语句。</p>
+<p>语句末尾一般会加一个分号分隔，或者用换行分隔。</p>
+<p>下面这些我们经常写的代码，每一行都是一个 Statement：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">break</span>;
+<span class="hljs-keyword">continue</span>;
+<span class="hljs-keyword">return</span>;
+<span class="hljs-keyword">debugger</span>;
+<span class="hljs-keyword">throw</span> <span class="hljs-built_in">Error</span>();
+{}
+<span class="hljs-keyword">try</span> {} <span class="hljs-keyword">catch</span>(e) {} <span class="hljs-keyword">finally</span>{}
+<span class="hljs-keyword">for</span> (<span class="hljs-keyword">let</span> key <span class="hljs-keyword">in</span> obj) {}
+<span class="hljs-keyword">for</span> (<span class="hljs-keyword">let</span> i = <span class="hljs-number">0</span>;i &lt; <span class="hljs-number">10</span>;i ++) {}
+<span class="hljs-keyword">while</span> (<span class="hljs-literal">true</span>) {}
+<span class="hljs-keyword">do</span> {} <span class="hljs-keyword">while</span> (<span class="hljs-literal">true</span>)
+<span class="hljs-keyword">switch</span> (v){<span class="hljs-keyword">case</span> <span class="hljs-number">1</span>: <span class="hljs-keyword">break</span>;<span class="hljs-keyword">default</span>:;}
+<span class="hljs-attr">label</span>: <span class="hljs-built_in">console</span>.log();
+<span class="hljs-keyword">with</span> (a){}
+</code></pre>
+<p>它们对应的 AST 节点如下图所示：</p>
+<p><img src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/d711045e21bb44b68495088df6a9a60b~tplv-k3u1fbpfcp-watermark.awebp" alt="" loading="lazy" class="medium-zoom-image"></p>
+<p>语句是代码执行的最小单位，可以说，代码是由语句（Statement）构成的。</p>
+<h3 data-id="heading-4">Declaration</h3>
+<p>声明语句是一种特殊的语句，它执行的逻辑是在作用域内声明一个变量、函数、class、import、export 等。</p>
+<p>比如下面这些声明语句：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">const</span> a = <span class="hljs-number">1</span>;
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">b</span>(<span class="hljs-params"></span>)</span>{}
+<span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">C</span> </span>{}
+
+<span class="hljs-keyword">import</span> d <span class="hljs-keyword">from</span> <span class="hljs-string">'e'</span>;
+
+<span class="hljs-keyword">export</span> <span class="hljs-keyword">default</span> e = <span class="hljs-number">1</span>;
+<span class="hljs-keyword">export</span> {e};
+<span class="hljs-keyword">export</span> * <span class="hljs-keyword">from</span> <span class="hljs-string">'e'</span>;
+</code></pre>
+<p>它们对应的 AST 节点如下图：</p>
+<p><img src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/5303fa5530944a638d6b3d1af93f0e3f~tplv-k3u1fbpfcp-watermark.awebp" alt="" loading="lazy" class="medium-zoom-image"></p>
+<p>声明语句用于定义变量，变量声明也是代码中一个基础的部分。</p>
+<h3 data-id="heading-5">Expression</h3>
+<p>expression 是表达式，特点是执行完以后有返回值，这是和语句 (statement) 的区别。</p>
+<p>下面是一些常见的表达式</p>
+<pre><code class="hljs language-javascript" lang="javascript">[<span class="hljs-number">1</span>,<span class="hljs-number">2</span>,<span class="hljs-number">3</span>]
+a = <span class="hljs-number">1</span>
+<span class="hljs-number">1</span> + <span class="hljs-number">2</span>;
+-<span class="hljs-number">1</span>;
+<span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>)</span>{};
+<span class="hljs-function">() =&gt;</span> {};
+<span class="hljs-class"><span class="hljs-keyword">class</span></span>{};
+a;
+<span class="hljs-built_in">this</span>;
+<span class="hljs-built_in">super</span>;
+a::b;
+</code></pre>
+<p>它们对应的AST如图：</p>
+<p><img src="https://p3-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/feabcb940982409b911dcbb6066e8aa7~tplv-k3u1fbpfcp-watermark.awebp" alt="" loading="lazy" class="medium-zoom-image"></p>
+<p>细心的同学可能会问 identifier 和 super 怎么也是表达式呢？</p>
+<p>其实有的节点可能会是多种类型，identifier、super 有返回值，符合表达式的特点，所以也是 expression。</p>
+<p>我们判断 AST 节点是不是某种类型要看它是不是符合该种类型的特点，比如语句的特点是能够单独执行，表达式的特点是有返回值。</p>
+<p>有的表达式可以单独执行，符合语句的特点，所以也是语句，比如赋值表达式、数组表达式等，但有的表达式不能单独执行，需要和其他类型的节点组合在一起构成语句。比如匿名函数表达式和匿名 class 表达式单独执行会报错</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>)</span>{};
+<span class="hljs-class"><span class="hljs-keyword">class</span></span>{}
+</code></pre>
+<p>需要和其他部分一起构成一条语句，比如组成赋值语句</p>
+<pre><code class="hljs language-javascript" lang="javascript">a = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>) </span>{}
+b = <span class="hljs-class"><span class="hljs-keyword">class</span></span>{}
+</code></pre>
+<p>表达式语句解析成 AST 的时候会包裹一层 ExpressionStatement 节点，代表这个表达式是被当成语句执行的。</p>
+<p><img src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/07a3f1e392f649adb764ada46ee48602~tplv-k3u1fbpfcp-watermark.awebp" alt="" loading="lazy" class="medium-zoom-image"></p>
+<p><strong>小结</strong>：表达式的特点是有返回值，有的表达式可以独立作为语句执行，会包裹一层 ExpressionStatement。</p>
+<h3 data-id="heading-6">Class</h3>
+<p>class 的语法也有专门的 AST 节点来表示。</p>
+<p>整个 class 的内容是 ClassBody，属性是 ClassProperty，方法是ClassMethod（通过 kind 属性来区分是 constructor 还是 method）。</p>
+<p>比如下面的代码</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">Guang</span> <span class="hljs-keyword">extends</span> <span class="hljs-title">Person</span></span>{
+    name = <span class="hljs-string">'guang'</span>;
+    <span class="hljs-function"><span class="hljs-title">constructor</span>(<span class="hljs-params"></span>)</span> {}
+    <span class="hljs-function"><span class="hljs-title">eat</span>(<span class="hljs-params"></span>)</span> {}
+}
+</code></pre>
+<p>对应的AST是这样的</p>
+<p><img src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/0c62ec375157488780e2beae39e7620d~tplv-k3u1fbpfcp-watermark.awebp" alt="" loading="lazy" class="medium-zoom-image"></p>
+<p>class 是 es next 的语法，babel 中有专门的 AST 来表示它的内容。</p>
+<h3 data-id="heading-7">Modules</h3>
+<p>es module 是语法级别的模块规范，所以也有专门的 AST 节点。</p>
+<h4 data-id="heading-8">import</h4>
+<p>import 有 3 种语法：</p>
+<p>named import：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">import</span> {c, d} <span class="hljs-keyword">from</span> <span class="hljs-string">'c'</span>;
+</code></pre>
+<p>default import：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">import</span> a <span class="hljs-keyword">from</span> <span class="hljs-string">'a'</span>;
+</code></pre>
+<p>namespaced import:</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">import</span> * <span class="hljs-keyword">as</span> b <span class="hljs-keyword">from</span> <span class="hljs-string">'b'</span>;
+</code></pre>
+<p>这 3 种语法都对应 ImportDeclaration 节点，但是 specifiers 属性不同，分别对应 ImportSpicifier、ImportDefaultSpecifier、ImportNamespaceSpcifier。</p>
+<p><img src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/e501a0dfcce043c184e6320e22a4211c~tplv-k3u1fbpfcp-watermark.awebp" alt="" loading="lazy" class="medium-zoom-image"></p>
+<p>图中黄框标出的是 specifier 部分。可以直观的看出整体结构相同，只是specifier 部分不同，所以 import 语法的 AST 的结构是ImportDeclaration 包含着各种 import specifier。</p>
+<h4 data-id="heading-9">export</h4>
+<p>export 也有3种语法：</p>
+<p>named export：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">export</span> { b, d};
+</code></pre>
+<p>default export：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">export</span> <span class="hljs-keyword">default</span> a;
+</code></pre>
+<p>all export：</p>
+<pre><code class="">export * from 'c';
+</code></pre>
+<p>分别对应 ExportNamedDeclaration、ExportDefaultDeclaration、ExportAllDeclaration 的节点</p>
+<p>其中 ExportNamedDeclaration 才有 specifiers 属性，其余两种都没有这部分（也比较好理解，export 不像 import 那样结构类似，这三种 export 语法结构是不一样的，所以不是都包含 specifier）。</p>
+<p>比如这三种 export</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">export</span> { b, d};
+<span class="hljs-keyword">export</span> <span class="hljs-keyword">default</span> a;
+<span class="hljs-keyword">export</span> * <span class="hljs-keyword">from</span> <span class="hljs-string">'c'</span>;
+</code></pre>
+<p>对应的 AST 节点为</p>
+<p><img src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/c3ccde25491e42199088fe1f050469ab~tplv-k3u1fbpfcp-watermark.awebp" alt="" loading="lazy" class="medium-zoom-image"></p>
+<h3 data-id="heading-10">Program &amp; Directive</h3>
+<p>program 是代表整个程序的节点，它有 body 属性代表程序体，存放 statement 数组，就是具体执行的语句的集合。还有 directives 属性，存放Directive 节点，比如<code>"use strict"</code> 这种指令会使用 Directive 节点表示。</p>
+<p><img src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/154a6b04020047a0aa8eec9a29ae2d7f~tplv-k3u1fbpfcp-watermark.awebp" alt="" loading="lazy" class="medium-zoom-image"></p>
+<p>Program 是包裹具体执行语句的节点，而 Directive 则是代码中的指令部分。</p>
+<h3 data-id="heading-11">File &amp; Comment</h3>
+<p>babel 的 AST 最外层节点是 File，它有 program、comments、tokens 等属性，分别存放 Program 程序体、注释、token 等，是最外层节点。</p>
+<p>注释分为块注释和行内注释，对应 CommentBlock 和 CommentLine 节点。</p>
+<p><img src="https://p6-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/54eb07649db14476a27d61b4265fe547~tplv-k3u1fbpfcp-watermark.awebp" alt="" loading="lazy" class="medium-zoom-image"></p>
+<p>上面 6 种就是常见的一些 AST 节点类型，babel 就是通过这些节点来抽象源码中不同的部分。</p>
+<h2 data-id="heading-12">AST 可视化查看工具</h2>
+<p>当然，我们并不需要记什么内容对应什么 AST 节点，可以通过 <a href="https://link.juejin.cn?target=https%3A%2F%2Fastexplorer.net%2F" target="_blank" rel="nofollow noopener noreferrer" title="https://astexplorer.net/" ref="nofollow noopener noreferrer">axtexplorer.net</a>  这个网站来直观的查看。</p>
+<p><img src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/c26502def1b84a36a54ab09c7b071e73~tplv-k3u1fbpfcp-watermark.awebp" alt="" loading="lazy" class="medium-zoom-image"></p>
+<p>这个网站可以查看代码 parse 以后的结果，但是如果想查看全部的 AST 可以在<a href="https://link.juejin.cn?target=https%3A%2F%2Fgithub.com%2Fbabel%2Fbabel%2Fblob%2Fmain%2Fpackages%2Fbabel-parser%2Fast%2Fspec.md" target="_blank" rel="nofollow noopener noreferrer" title="https://github.com/babel/babel/blob/main/packages/babel-parser/ast/spec.md" ref="nofollow noopener noreferrer">babel parser 仓库里的 AST 文档</a>里查，或者直接去看 @babel/types 的<a href="https://link.juejin.cn?target=https%3A%2F%2Fgithub.com%2Fbabel%2Fbabel%2Fblob%2Fmain%2Fpackages%2Fbabel-types%2Fsrc%2Fast-types%2Fgenerated%2Findex.ts" target="_blank" rel="nofollow noopener noreferrer" title="https://github.com/babel/babel/blob/main/packages/babel-types/src/ast-types/generated/index.ts" ref="nofollow noopener noreferrer"> typescript 类型定义</a>。</p>
+<h2 data-id="heading-13">AST 的公共属性</h2>
+<p>每种 AST 都有自己的属性，但是它们也有一些公共属性：</p>
+<ul>
+<li><code>type</code>： AST 节点的类型</li>
+<li><code>start、end、loc</code>：start 和 end 代表该节点对应的源码字符串的开始和结束下标，不区分行列。而 loc 属性是一个对象，有 line 和 column 属性分别记录开始和结束行列号。</li>
+<li><code>leadingComments、innerComments、trailingComments</code>： 表示开始的注释、中间的注释、结尾的注释，因为每个 AST 节点中都可能存在注释，而且可能在开始、中间、结束这三种位置，通过这三个属性来记录和 Comment 的关联。</li>
+<li><code>extra</code>：记录一些额外的信息，用于处理一些特殊情况。比如 StringLiteral 修改 value 只是值的修改，而修改 extra.raw 则可以连同单双引号一起修改。</li>
+</ul>
+<h2 data-id="heading-14">总结</h2>
+<p>这一节我们学习了代码中常见的语法在 babel 的 AST 中对应的节点。</p>
+<p>我们学习了： 标识符 Identifer、各种字面量 xxLiteral、各种语句 xxStatement，各种声明语句 xxDeclaration，各种表达式 xxExpression，以及 Class、Modules、File、Program、Directive、Comment 这些 AST 节点。</p>
+<p>了解了这些节点，就能知道平时写的代码是怎么用 AST 表示的，当然也不需要记，可以用 (<a href="https://link.juejin.cn?target=https%3A%2F%2Fastexplorer.net%2F" target="_blank" rel="nofollow noopener noreferrer" title="https://astexplorer.net/" ref="nofollow noopener noreferrer">astexpoler.net</a>) 可视化的查看。</p>
+<p>AST 节点可能同时有多种类型，确定一种 AST 节点是什么类型主要看它的特点，比如 Statement 的特点是可以单独执行，Expression 的特点是有返回值，所以一些可以单独执行的 Expression 会包一层 ExpressionStatement。</p>
+<p>不同 AST 节点有不同的属性来存放各自对应的源码内容，但是都有一些公共属性如 type、xxComments、loc 等。</p>
+<p>学会了 AST，就可以把对代码的操作转为对 AST 的操作了。</p><style>.markdown-body pre,.markdown-body pre>code.hljs{color:#333;background:#f8f8f8}.hljs-comment,.hljs-quote{color:#998;font-style:italic}.hljs-keyword,.hljs-selector-tag,.hljs-subst{color:#333;font-weight:700}.hljs-literal,.hljs-number,.hljs-tag .hljs-attr,.hljs-template-variable,.hljs-variable{color:teal}.hljs-doctag,.hljs-string{color:#d14}.hljs-section,.hljs-selector-id,.hljs-title{color:#900;font-weight:700}.hljs-subst{font-weight:400}.hljs-class .hljs-title,.hljs-type{color:#458;font-weight:700}.hljs-attribute,.hljs-name,.hljs-tag{color:navy;font-weight:400}.hljs-link,.hljs-regexp{color:#009926}.hljs-bullet,.hljs-symbol{color:#990073}.hljs-built_in,.hljs-builtin-name{color:#0086b3}.hljs-meta{color:#999;font-weight:700}.hljs-deletion{background:#fdd}.hljs-addition{background:#dfd}.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}</style>

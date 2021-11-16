@@ -1,0 +1,133 @@
+<style>.markdown-body{word-break:break-word;line-height:1.75;font-weight:400;font-size:15px;overflow-x:hidden;color:#333}.markdown-body h1,.markdown-body h2,.markdown-body h3,.markdown-body h4,.markdown-body h5,.markdown-body h6{line-height:1.5;margin-top:35px;margin-bottom:10px;padding-bottom:5px}.markdown-body h1{font-size:30px;margin-bottom:5px}.markdown-body h2{padding-bottom:12px;font-size:24px;border-bottom:1px solid #ececec}.markdown-body h3{font-size:18px;padding-bottom:0}.markdown-body h4{font-size:16px}.markdown-body h5{font-size:15px}.markdown-body h6{margin-top:5px}.markdown-body p{line-height:inherit;margin-top:22px;margin-bottom:22px}.markdown-body img{max-width:100%}.markdown-body hr{border:none;border-top:1px solid #ddd;margin-top:32px;margin-bottom:32px}.markdown-body code{word-break:break-word;border-radius:2px;overflow-x:auto;background-color:#fff5f5;color:#ff502c;font-size:.87em;padding:.065em .4em}.markdown-body code,.markdown-body pre{font-family:Menlo,Monaco,Consolas,Courier New,monospace}.markdown-body pre{overflow:auto;position:relative;line-height:1.75}.markdown-body pre>code{font-size:12px;padding:15px 12px;margin:0;word-break:normal;display:block;overflow-x:auto;color:#333;background:#f8f8f8}.markdown-body a{text-decoration:none;color:#0269c8;border-bottom:1px solid #d1e9ff}.markdown-body a:active,.markdown-body a:hover{color:#275b8c}.markdown-body table{display:inline-block!important;font-size:12px;width:auto;max-width:100%;overflow:auto;border:1px solid #f6f6f6}.markdown-body thead{background:#f6f6f6;color:#000;text-align:left}.markdown-body tr:nth-child(2n){background-color:#fcfcfc}.markdown-body td,.markdown-body th{padding:12px 7px;line-height:24px}.markdown-body td{min-width:120px}.markdown-body blockquote{color:#666;padding:1px 23px;margin:22px 0;border-left:4px solid #cbcbcb;background-color:#f8f8f8}.markdown-body blockquote:after{display:block;content:""}.markdown-body blockquote>p{margin:10px 0}.markdown-body ol,.markdown-body ul{padding-left:28px}.markdown-body ol li,.markdown-body ul li{margin-bottom:0;list-style:inherit}.markdown-body ol li .task-list-item,.markdown-body ul li .task-list-item{list-style:none}.markdown-body ol li .task-list-item ol,.markdown-body ol li .task-list-item ul,.markdown-body ul li .task-list-item ol,.markdown-body ul li .task-list-item ul{margin-top:0}.markdown-body ol ol,.markdown-body ol ul,.markdown-body ul ol,.markdown-body ul ul{margin-top:3px}.markdown-body ol li{padding-left:6px}.markdown-body .contains-task-list{padding-left:0}.markdown-body .task-list-item{list-style:none}@media (max-width:720px){.markdown-body h1{font-size:24px}.markdown-body h2{font-size:20px}.markdown-body h3{font-size:18px}}</style><p>core 包的功能是串联整个编译流程，并且实现插件和 preset。</p>
+<p>这节我们来实现一下 core 包。</p>
+<h2 data-id="heading-0">思路分析</h2>
+<p>前面，我们实现了 parser、traverse、generator 包，使用方式是这样的：</p>
+<p>分别调用 parse、traverse、generate，来完成源码的 parse、AST 的遍历和修改，以及目标代码和 sourcemap 的打印。</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-keyword">const</span> sourceCode = <span class="hljs-string">`
+const c = 1;
+const d = 2;
+const e = 4;
+
+function add(a, b) {
+    const tmp = 1;
+    return a + b;
+}
+
+add(c, d);
+`</span>;
+
+<span class="hljs-keyword">const</span> ast = parser.parse(sourceCode, {
+    <span class="hljs-attr">plugins</span>: [<span class="hljs-string">'literal'</span>, <span class="hljs-string">'guangKeyword'</span>]
+});
+
+traverse(ast, {
+    <span class="hljs-function"><span class="hljs-title">Program</span>(<span class="hljs-params">path</span>)</span> {
+       <span class="hljs-built_in">Object</span>.entries(path.scope.bindings).forEach(<span class="hljs-function">(<span class="hljs-params">[id, binding]</span>) =&gt;</span> {
+        <span class="hljs-keyword">if</span> (!binding.referenced) {
+            binding.path.remove();
+        }
+       });
+    }
+});
+
+<span class="hljs-keyword">const</span> { code, map} = generate(ast, sourceCode, <span class="hljs-string">'foo.js'</span>);
+<span class="hljs-built_in">console</span>.log(code);
+<span class="hljs-built_in">console</span>.log(map);
+</code></pre>
+<p>而如果用了 core 包，使用方式是这样的：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">plugin1</span>(<span class="hljs-params">api, options</span>) </span>{
+    <span class="hljs-keyword">return</span> {
+        <span class="hljs-attr">visitor</span>: {
+            <span class="hljs-function"><span class="hljs-title">Program</span>(<span class="hljs-params">path</span>)</span> {
+               <span class="hljs-built_in">Object</span>.entries(path.scope.bindings).forEach(<span class="hljs-function">(<span class="hljs-params">[id, binding]</span>) =&gt;</span> {
+                    <span class="hljs-keyword">if</span> (!binding.referenced) {
+                        binding.path.remove();
+                    }
+                });
+            }
+    }
+}
+<span class="hljs-keyword">const</span> { code, map } = transformSync(sourceCode, {
+    <span class="hljs-attr">parserOpts</span>: {
+        <span class="hljs-attr">plugins</span>: [<span class="hljs-string">'literal'</span>]
+    },
+    <span class="hljs-attr">fileName</span>: <span class="hljs-string">'foo.js'</span>,
+    <span class="hljs-attr">plugins</span>: [
+        [plugin1, {}]
+    ],
+    <span class="hljs-attr">presets</span>: []
+});
+</code></pre>
+<p>可以看到，transformSync 封装了 parse、traverse、generate 的逻辑，并且还实现了插件和 preset 机制。</p>
+<p>集成 parse、traverse、generate 比较简单，但插件和 preset 是怎么实现的呢？</p>
+<p>插件是一个函数返回包含 visitor 的对象，我们只要把各种通过 options 传入的插件，在 transformSync 里面合并，之后把合并后的 visitors 传入  traverse 方法就可以了。</p>
+<p>而 preset 是插件的集合，调用函数返回插件数组，之后再调用插件返回 visitor 等，然后 visitor，调用 traverse。</p>
+<p>此外要注意的是 babel 插件的顺序是先 plugin 后 preset，plugin 从前往后、preset 从后往前。</p>
+<h2 data-id="heading-1">代码实现</h2>
+<p>首先我们集成 parse、traverse、generate 3步：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">transformSync</span>(<span class="hljs-params">code, options</span>) </span>{
+    <span class="hljs-keyword">const</span> ast = parser.parse(code, options.parserOpts);
+
+    <span class="hljs-keyword">const</span> visitors = {};
+
+    traverse(ast, visitors);
+    <span class="hljs-keyword">return</span> generate(ast, code, options.fileName);
+}
+</code></pre>
+<p>这里的 visitor 就是插件里面 visitor 的合并，我们实现下插件机制：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">transformSync</span>(<span class="hljs-params">code, options</span>) </span>{
+    <span class="hljs-keyword">const</span> ast = parser.parse(code, options.parserOpts);
+
+    <span class="hljs-keyword">const</span> pluginApi = {
+        template
+    }
+    <span class="hljs-keyword">const</span> visitors = {};
+    options.plugins &amp;&amp; options.plugins.forEach(<span class="hljs-function">(<span class="hljs-params">[plugin, options]</span>) =&gt;</span> {
+        <span class="hljs-keyword">const</span> res = plugin(pluginApi, options);
+        <span class="hljs-built_in">Object</span>.assign(visitors, res.visitor);
+    });
+
+    traverse(ast, visitors);
+    <span class="hljs-keyword">return</span> generate(ast, code, options.fileName);
+}
+</code></pre>
+<p>其实比较简单，就是调用 options 里面的 plugin，传入 options、api，然后把返回的 visitor 合并，之后传入 traverse。</p>
+<p>而 preset 是插件的集合，所以要多调用一层，并且因为顺序是从右往左，所以要 reverse 一下。</p>
+<pre><code class="hljs language-javascript" lang="javascript">options.presets &amp;&amp; options.presets.reverse().forEach(<span class="hljs-function">(<span class="hljs-params">[preset, options]</span>) =&gt;</span> {
+    <span class="hljs-keyword">const</span> plugins = preset(pluginApi, options);
+    plugins.forEach(<span class="hljs-function">(<span class="hljs-params">[plugin, options]</span>)=&gt;</span> {
+        <span class="hljs-keyword">const</span> res = plugin(pluginApi, options);
+        <span class="hljs-built_in">Object</span>.assign(visitors, res.visitor);
+    })
+})
+</code></pre>
+<p>完整代码如下：</p>
+<pre><code class="hljs language-javascript" lang="javascript"><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">transformSync</span>(<span class="hljs-params">code, options</span>) </span>{
+    <span class="hljs-keyword">const</span> ast = parser.parse(code, options.parserOpts);
+
+    <span class="hljs-keyword">const</span> pluginApi = {
+        template
+    }
+    <span class="hljs-keyword">const</span> visitors = {};
+    options.plugins &amp;&amp; options.plugins.forEach(<span class="hljs-function">(<span class="hljs-params">[plugin, options]</span>) =&gt;</span> {
+        <span class="hljs-keyword">const</span> res = plugin(pluginApi, options);
+        <span class="hljs-built_in">Object</span>.assign(visitors, res.visitor);
+    });
+    options.presets &amp;&amp; options.presets.reverse().forEach(<span class="hljs-function">(<span class="hljs-params">[preset, options]</span>) =&gt;</span> {
+        <span class="hljs-keyword">const</span> plugins = preset(pluginApi, options);
+        plugins.forEach(<span class="hljs-function">(<span class="hljs-params">[plugin, options]</span>)=&gt;</span> {
+            <span class="hljs-keyword">const</span> res = plugin(pluginApi, options);
+            <span class="hljs-built_in">Object</span>.assign(visitors, res.visitor);
+        })
+    })
+
+    traverse(ast, visitors);
+    <span class="hljs-keyword">return</span> generate(ast, code, options.fileName);
+}
+</code></pre>
+<h2 data-id="heading-2">总结</h2>
+<p>core 包集成了 parser、traverse、generator 等包，并且实现了 plugin、preset 机制。</p>
+<p>我们会把插件返回的 visitor 做合并，然后作为 visitor 调用 traverse。</p>
+<p>插件是一个函数，传入可用的 api 以及调用时传入的 options，返回 visitor 等，而 preset 是插件的集合，要调用 preset 之后拿到插件集合，之后再调用具体的插件，最后把所有 visitor 做合并。</p>
+<p>babel 是微内核架构，就是因为核心只实现了编译流程，具体的转换功能都是通过插件来实现的，而 preset 则是为了简化用户使用 babel 的成本而引入的一种机制，是插件的集合，让用户不需要直接配置具体的插件，选择不同的 preset 即可。</p>
+<p>（代码在<a href="https://link.juejin.cn?target=https%3A%2F%2Fgithub.com%2FQuarkGluonPlasma%2Fbabel-plugin-exercize" target="_blank" rel="nofollow noopener noreferrer" title="https://github.com/QuarkGluonPlasma/babel-plugin-exercize" ref="nofollow noopener noreferrer">这里</a>，建议 git clone 下来通过 node 跑一下）</p><style>.markdown-body pre,.markdown-body pre>code.hljs{color:#333;background:#f8f8f8}.hljs-comment,.hljs-quote{color:#998;font-style:italic}.hljs-keyword,.hljs-selector-tag,.hljs-subst{color:#333;font-weight:700}.hljs-literal,.hljs-number,.hljs-tag .hljs-attr,.hljs-template-variable,.hljs-variable{color:teal}.hljs-doctag,.hljs-string{color:#d14}.hljs-section,.hljs-selector-id,.hljs-title{color:#900;font-weight:700}.hljs-subst{font-weight:400}.hljs-class .hljs-title,.hljs-type{color:#458;font-weight:700}.hljs-attribute,.hljs-name,.hljs-tag{color:navy;font-weight:400}.hljs-link,.hljs-regexp{color:#009926}.hljs-bullet,.hljs-symbol{color:#990073}.hljs-built_in,.hljs-builtin-name{color:#0086b3}.hljs-meta{color:#999;font-weight:700}.hljs-deletion{background:#fdd}.hljs-addition{background:#dfd}.hljs-emphasis{font-style:italic}.hljs-strong{font-weight:700}</style>
