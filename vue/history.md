@@ -5,4 +5,6 @@
 
 
 ### computed 计算方法性能分析  
-[Vue: When a computed property can be the wrong tool](https://dev.to/linusborg/vue-when-a-computed-property-can-be-the-wrong-tool-195j)
+[Vue: When a computed property can be the wrong tool](https://dev.to/linusborg/vue-when-a-computed-property-can-be-the-wrong-tool-195j)  
+
+[vue runtime core](https://github.com/vuejs/vue-next/blob/master/packages/runtime-core/src/index.ts)  
