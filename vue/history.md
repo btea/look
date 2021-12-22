@@ -8,3 +8,6 @@
 [Vue: When a computed property can be the wrong tool](https://dev.to/linusborg/vue-when-a-computed-property-can-be-the-wrong-tool-195j)  
 
 [vue runtime core](https://github.com/vuejs/vue-next/blob/master/packages/runtime-core/src/index.ts)  
+
+### rfcs
+[rfcs](https://github.com/vuejs/rfcs/blob/master/active-rfcs/0040-script-setup.md#type-only-propsemit-declarations)  
